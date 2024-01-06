@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -5,6 +6,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def handler(event, context):
@@ -15,7 +17,11 @@ def handler(event, context):
   Also validates the job request.
   """
 
+  logger.info("Received new event: " + str(event))
+
   s3_client = boto3.client('s3')
+
+  logger.info(f"event: {event}\ncontext: {context}")
 
   try:
     presigned_url = s3_client.generate_presigned_url(
@@ -29,4 +35,7 @@ def handler(event, context):
     logger.exception("Couldn't get a presigned URL for client")
     raise
 
-  return presigned_url
+  return {
+    'statusCode': 200,
+    'body': json.dumps({'url': presigned_url})
+  }

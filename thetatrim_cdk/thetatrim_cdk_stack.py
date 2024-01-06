@@ -1,6 +1,7 @@
 import aws_cdk
 from aws_cdk import (
   Stack,
+  aws_apigateway as _apigateway,
   aws_s3 as _s3,
   aws_lambda as _lambda,
 )
@@ -35,4 +36,15 @@ class ThetatrimCdkStack(Stack):
 
     job_bucket.grant_read_write(post_handler)
 
-    # The code that defines your stack goes here
+    ###
+    # API Gateway Config
+    ###
+
+    api = _apigateway.RestApi(self, "ThetaTrimRestAPI",
+                              rest_api_name="tehtatrim",
+                              )
+
+    jobs_resource = api.root.add_resource("jobs")
+    jobs_resource.add_method("POST",
+                             integration=_apigateway.LambdaIntegration(post_handler)
+                             )
