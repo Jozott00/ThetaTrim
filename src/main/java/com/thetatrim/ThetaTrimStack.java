@@ -113,7 +113,7 @@ public class ThetaTrimStack extends Stack {
     }
 
     /**
-     * Grants all necessary for interaction between services.
+     * Grants all necessary permissions for interaction between services.
      */
     private void grantPermissions() {
         jobBucket.grantReadWrite(postJobLambda);
