@@ -1,4 +1,34 @@
-# Local Development Intro
+# General Information
+
+This project utilizes the [Java AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/work-with-cdk-java.html), a framework for defining cloud infrastructure in Java code and provisioning it through [AWS CloudFormation](https://aws.amazon.com/cloudformation). 
+The `cdk.json` file tells the CDK Toolkit how to execute the application.
+
+## Useful commands
+
+* `mvn package`     compile and run tests
+* `cdk ls`          list all stacks in the app
+* `cdk synth`       emits the synthesized CloudFormation template
+* `cdk deploy`      deploy this stack to your default AWS account/region
+* `cdk diff`        compare deployed stack with current state
+* `cdk docs`        open CDK documentation
+
+# Cloud Development
+
+To deploy the application on AWS, begin by installing the AWS Cloud Development Kit (CDK).
+You can find the [aws-cdk package here](https://www.npmjs.com/package/aws-cdk).
+Once installed, use the command `aws configure` to set up the AWS account you intend to deploy to.
+You might want to create a new [IAM user](https://aws.amazon.com/iam/) for this purpose.
+Note that the stack will then be deployed to the specified environment, such as `eu-west-3`, `us-east-1`, etc.
+
+Once you've configured your user, you're ready to deploy the stack to your AWS environment.
+Start by bootstrapping the stack using the command `cdk bootstrap`.
+This step prepares your AWS environment for the deployment.
+Following the bootstrap process, deploy your stack by executing the command `cdk deploy`.
+This will initiate the deployment of your application on AWS.
+
+# Local Development
+
+TODO: Update according to Java. 
 
 To develop the AWS application locally follow these steps:
 
@@ -57,61 +87,3 @@ This will output something like
 
 which is a presigned url the lambda generated for us to access `/some-job-id/original.mp4` in the `job-object-storage`
 bucket.
-
-# Original README:
-
-This is a blank project for CDK development with Python.
-
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
-
-This project is set up like a standard Python project. The initialization
-process also creates a virtualenv within this project, stored under the `.venv`
-directory. To create the virtualenv it assumes that there is a `python3`
-(or `python` for Windows) executable in your path with access to the `venv`
-package. If for any reason the automatic creation of the virtualenv fails,
-you can create the virtualenv manually.
-
-To manually create a virtualenv on MacOS and Linux:
-
-```
-$ python3 -m venv .venv
-```
-
-After the init process completes and the virtualenv is created, you can use the following
-step to activate your virtualenv.
-
-```
-$ source .venv/bin/activate
-```
-
-If you are a Windows platform, you would activate the virtualenv like this:
-
-```
-% .venv\Scripts\activate.bat
-```
-
-Once the virtualenv is activated, you can install the required dependencies.
-
-```
-$ pip install -r requirements.txt
-```
-
-At this point you can now synthesize the CloudFormation template for this code.
-
-```
-$ cdk synth
-```
-
-To add additional dependencies, for example other CDK libraries, just add
-them to your `setup.py` file and rerun the `pip install -r requirements.txt`
-command.
-
-## Useful commands
-
-* `cdk ls`          list all stacks in the app
-* `cdk synth`       emits the synthesized CloudFormation template
-* `cdk deploy`      deploy this stack to your default AWS account/region
-* `cdk diff`        compare deployed stack with current state
-* `cdk docs`        open CDK documentation
-
-Enjoy!

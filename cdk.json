@@ -1,5 +1,5 @@
 {
-  "app": "python3 app.py",
+  "app": "mvn -e -q compile exec:java",
   "watch": {
     "include": [
       "**"
@@ -7,11 +7,9 @@
     "exclude": [
       "README.md",
       "cdk*.json",
-      "requirements*.txt",
-      "source.bat",
-      "**/__init__.py",
-      "**/__pycache__",
-      "tests"
+      "target",
+      "pom.xml",
+      "src/test"
     ]
   },
   "context": {
