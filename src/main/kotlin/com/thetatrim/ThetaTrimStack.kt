@@ -4,6 +4,9 @@ import software.amazon.awscdk.Stack
 import software.amazon.awscdk.StackProps
 import software.amazon.awscdk.services.apigateway.LambdaIntegration
 import software.amazon.awscdk.services.apigateway.RestApi
+import software.amazon.awscdk.services.dynamodb.Attribute
+import software.amazon.awscdk.services.dynamodb.AttributeType
+import software.amazon.awscdk.services.dynamodb.Table
 import software.amazon.awscdk.services.lambda.Code
 import software.amazon.awscdk.services.lambda.Function
 import software.amazon.awscdk.services.lambda.Runtime
@@ -20,7 +23,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
     /**
      * S3 Bucket for storing job objects such as videos and frames.
      */
-    private lateinit var jobBucket: Bucket
+    private lateinit var jobsBucket: Bucket
 
     /**
      * Lambda function for creating jobs and presigned urls.
@@ -41,6 +44,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
      * Queue for newly created videos to be further processed.
      */
     private lateinit var preprocessingQueue: Queue
+    private lateinit var jobsTable: Table;
 
     init {
         setupResources()
@@ -53,7 +57,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
      * Initializes all resources of the stack.
      */
     private fun setupResources() {
-        jobBucket = Bucket.Builder.create(this, "JobObjectBucket")
+        jobsBucket = Bucket.Builder.create(this, "JobObjectBucket")
             .bucketName("${PREFIX}job-object-bucket")
             .versioned(true)
             .build()
@@ -64,7 +68,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .code(Code.fromAsset("lambdas/rest"))
             .environment(
                 mapOf(
-                    "OBJECT_BUCKET_NAME" to jobBucket.bucketName
+                    "OBJECT_BUCKET_NAME" to jobsBucket.bucketName
                 )
             )
             .build()
@@ -75,7 +79,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .code(Code.fromAsset("lambdas/video_processing"))
             .environment(
                 mapOf(
-                    "OBJECT_BUCKET_NAME" to jobBucket.bucketName
+                    "OBJECT_BUCKET_NAME" to jobsBucket.bucketName
                 )
             )
             .build()
@@ -84,6 +88,11 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .build()
         preprocessingQueue = Queue.Builder.create(this, "PreprocessingQueue")
             .queueName("${PREFIX}preprocessing-queue")
+            .build()
+        jobsTable = Table.Builder.create(this, "JobsTable")
+            .partitionKey(
+                Attribute.builder().name("id").type(AttributeType.STRING).build()
+            )
             .build()
     }
 
@@ -100,7 +109,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
      * Configures all triggers between services.
      */
     private fun configureTriggers() {
-        jobBucket.addEventNotification(
+        jobsBucket.addEventNotification(
             EventType.OBJECT_CREATED,
             SqsDestination(preprocessingQueue),
             NotificationKeyFilter.builder()
@@ -114,7 +123,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
      * Grants all necessary permissions for interaction between services.
      */
     private fun grantPermissions() {
-        jobBucket.grantReadWrite(postJobLambda)
+        jobsBucket.grantReadWrite(postJobLambda)
     }
 
     companion object {
