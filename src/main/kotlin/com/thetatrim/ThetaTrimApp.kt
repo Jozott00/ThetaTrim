@@ -1,6 +1,6 @@
 package com.thetatrim
 
-import ThetaTrimStack
+
 import software.amazon.awscdk.App
 import software.amazon.awscdk.StackProps
 
