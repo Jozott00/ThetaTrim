@@ -1,9 +1,9 @@
-*.swp
-package-lock.json
-__pycache__
-.pytest_cache
-.venv
-*.egg-info
+.classpath.txt
+target
+.classpath
+.project
+.settings
+*.iml
 
 # CDK asset staging directory
 .cdk.staging
@@ -12,3 +12,4 @@ cdk.out
 
 # IDE
 .idea
+.vscode
