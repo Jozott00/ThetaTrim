@@ -4,6 +4,7 @@ target
 .project
 .settings
 *.iml
+build
 
 # CDK asset staging directory
 .cdk.staging
@@ -13,3 +14,4 @@ cdk.out
 # IDE
 .idea
 .vscode
+*.iml
