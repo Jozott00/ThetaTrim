@@ -8,6 +8,7 @@ import software.amazon.awscdk.services.apigateway.RestApi;
 import software.amazon.awscdk.services.lambda.Code;
 import software.amazon.awscdk.services.lambda.Function;
 import software.amazon.awscdk.services.lambda.Runtime;
+import software.amazon.awscdk.services.lambda.eventsources.SqsEventSource;
 import software.amazon.awscdk.services.s3.Bucket;
 import software.amazon.awscdk.services.s3.EventType;
 import software.amazon.awscdk.services.s3.NotificationKeyFilter;
@@ -18,20 +19,30 @@ import software.constructs.Construct;
 import java.util.Map;
 
 public class ThetaTrimStack extends Stack {
+    /**
+     * Prefix of all resource names.
+     */
     private static final String prefix = "thetatrim-";
     /**
      * S3 Bucket for storing job objects such as videos and frames.
      */
-    private Bucket jobObjectBucket;
+    private Bucket jobBucket;
     /**
      * Lambda function for creating jobs and presigned urls.
      */
     private Function postJobLambda;
     /**
+     * Lambda function for preprocessing uploaded videos.
+     */
+    private Function preprocessLambda;
+    /**
      * Rest API for handling different endpoints.
      */
     private RestApi restApi;
-    private Queue preProcessingQueue;
+    /**
+     * Queue for newly created videos to be further processed.
+     */
+    private Queue preprocessingQueue;
 
     public ThetaTrimStack(final Construct scope, final String id) {
         this(scope, id, null);
@@ -49,7 +60,7 @@ public class ThetaTrimStack extends Stack {
      * Initializes all resources of the stack.
      */
     private void setupResources() {
-        jobObjectBucket = Bucket.Builder.create(this, "JobObjectBucket")
+        jobBucket = Bucket.Builder.create(this, "JobObjectBucket")
             .bucketName(prefix + "job-object-bucket")
             .versioned(true)
             .build();
@@ -59,14 +70,23 @@ public class ThetaTrimStack extends Stack {
             .handler("post_job.handler")
             .code(Code.fromAsset("lambdas/rest"))
             .environment(Map.of(
-                "OBJECT_BUCKET_NAME", jobObjectBucket.getBucketName()
+                "OBJECT_BUCKET_NAME", jobBucket.getBucketName()
+            ))
+            .build();
+        preprocessLambda = Function.Builder.create(this, "PreprocessHandler")
+            .functionName(prefix + "preprocess-handler")
+            .runtime(Runtime.PYTHON_3_12)
+            .handler("preprocess.handler")
+            .code(Code.fromAsset("lambdas/video_processing"))
+            .environment(Map.of(
+                "OBJECT_BUCKET_NAME", jobBucket.getBucketName()
             ))
             .build();
         restApi = RestApi.Builder.create(this, "RestAPI")
             .restApiName(prefix + "rest-api")
             .build();
-        preProcessingQueue = Queue.Builder.create(this, "PreProcessingQueue")
-            .queueName(prefix + "pre-processing-queue")
+        preprocessingQueue = Queue.Builder.create(this, "PreprocessingQueue")
+            .queueName(prefix + "preprocessing-queue")
             .build();
     }
 
@@ -83,19 +103,19 @@ public class ThetaTrimStack extends Stack {
      * Configures all triggers between services.
      */
     private void configureTriggers() {
-        jobObjectBucket.addEventNotification(
+        jobBucket.addEventNotification(
             EventType.OBJECT_CREATED,
-            new SqsDestination(preProcessingQueue),
+            new SqsDestination(preprocessingQueue),
             NotificationKeyFilter.builder()
-                .prefix("")
                 .suffix("original.mp4")
                 .build());
+        preprocessLambda.addEventSource(new SqsEventSource(preprocessingQueue));
     }
 
     /**
      * Grants all necessary for interaction between services.
      */
     private void grantPermissions() {
-        jobObjectBucket.grantReadWrite(postJobLambda);
+        jobBucket.grantReadWrite(postJobLambda);
     }
 }
