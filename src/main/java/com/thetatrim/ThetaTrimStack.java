@@ -2,6 +2,9 @@ package com.thetatrim;
 
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
+import software.amazon.awscdk.services.apigateway.LambdaIntegration;
+import software.amazon.awscdk.services.apigateway.Resource;
+import software.amazon.awscdk.services.apigateway.RestApi;
 import software.amazon.awscdk.services.lambda.Code;
 import software.amazon.awscdk.services.lambda.Function;
 import software.amazon.awscdk.services.lambda.Runtime;
@@ -33,5 +36,15 @@ public class ThetaTrimStack extends Stack {
             .build();
         
         jobObjectBucket.grantReadWrite(postJobHandler);
+
+        RestApi restApi = RestApi.Builder.create(this, "RestAPI")
+            .restApiName("thetatrim")
+            .build();
+        
+        Resource jobsResource = restApi.getRoot().addResource("jobs");
+
+        LambdaIntegration postJobIntegration = LambdaIntegration.Builder.create(postJobHandler).build();
+        
+        jobsResource.addMethod("POST", postJobIntegration);
     }
 }
