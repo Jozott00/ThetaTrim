@@ -11,7 +11,7 @@ logger.setLevel(logging.INFO)
 
 def handler(event, context):
   """
-  Handles post job rest api calls
+  Handles post job rest api calls.
 
   Creates a job and a presigned url for it.
   Also validates the job request.
