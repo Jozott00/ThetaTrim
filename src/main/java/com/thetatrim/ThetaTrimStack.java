@@ -14,19 +14,31 @@ import software.constructs.Construct;
 import java.util.Map;
 
 public class ThetaTrimStack extends Stack {
+    /** S3 Bucket for storing job objects such as videos and frames. */
+    private Bucket jobObjectBucket;
+    /** Lambda function for creating jobs and presigned urls. */
+    private Function postJobHandler;
+    /** Rest API for handling different endpoints. */
+    private RestApi restApi;
+    
     public ThetaTrimStack(final Construct scope, final String id) {
         this(scope, id, null);
     }
 
     public ThetaTrimStack(final Construct scope, final String id, final StackProps props) {
         super(scope, id, props);
-        
-        Bucket jobObjectBucket = Bucket.Builder.create(this, "JobObjectBucket")
+        setupResources();
+        grantPermissions();
+        configureEndpoints();
+    }
+    
+    /** Initializes all resources of the stack. */
+    private void setupResources() {
+        jobObjectBucket = Bucket.Builder.create(this, "JobObjectBucket")
             .bucketName("job-object-bucket")
             .versioned(true)
             .build();
-
-        Function postJobHandler = Function.Builder.create(this, "PostJobHandler")
+        postJobHandler = Function.Builder.create(this, "PostJobHandler")
             .runtime(Runtime.PYTHON_3_12)
             .handler("post_job.handler")
             .code(Code.fromAsset("lambdas/rest"))
@@ -34,17 +46,20 @@ public class ThetaTrimStack extends Stack {
                 "OBJECT_BUCKET_NAME", jobObjectBucket.getBucketName()
             ))
             .build();
-        
-        jobObjectBucket.grantReadWrite(postJobHandler);
-
-        RestApi restApi = RestApi.Builder.create(this, "RestAPI")
+        restApi = RestApi.Builder.create(this, "RestAPI")
             .restApiName("thetatrim")
             .build();
-        
+    }
+    
+    /** Configures and adds all endpoints to the Rest API. */
+    private void configureEndpoints() {
         Resource jobsResource = restApi.getRoot().addResource("jobs");
-
         LambdaIntegration postJobIntegration = LambdaIntegration.Builder.create(postJobHandler).build();
-        
         jobsResource.addMethod("POST", postJobIntegration);
+    }
+    
+    /** Grants all necessary for interaction between services. */
+    private void grantPermissions() {
+        jobObjectBucket.grantReadWrite(postJobHandler);
     }
 }
