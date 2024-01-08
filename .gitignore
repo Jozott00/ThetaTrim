@@ -17,4 +17,4 @@ cdk.out
 *.iml
 
 # Others
-event.json
+event*.json

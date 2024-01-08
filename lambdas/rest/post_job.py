@@ -26,18 +26,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   - Creates a job entry in the DynamoDB table.
   - Generates a presigned URL for the job.
   """
-  fn_name = context.function_name
-  logger.info(f"Function {fn_name} invoked with event: {event}")
+  logger.info(f"Invoked with event: {event}")
 
   s3_client = boto3.client('s3')
   db_client = boto3.client('dynamodb')
   job_id = str(uuid.uuid1())
 
-  presigned_url = generate_presigned_url(s3_client, job_id, fn_name)
+  presigned_url = generate_presigned_url(s3_client, job_id)
 
-  store_job_info(db_client, job_id, fn_name)
+  store_job_info(db_client, job_id)
 
-  logger.info(f"{fn_name}: Successfully created job {job_id}")
+  logger.info(f"Successfully created job {job_id}")
 
   return {
     'statusCode': 200,
@@ -45,8 +44,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   }
 
 
-def generate_presigned_url(s3_client, job_id: str, fn_name: str) -> str:
-  """Generate a presigned URL for S3 object upload."""
+def generate_presigned_url(s3_client, job_id: str) -> str:
+  """Generates a presigned URL for S3 object upload."""
   try:
     return s3_client.generate_presigned_url(
       ClientMethod='put_object',
@@ -56,12 +55,12 @@ def generate_presigned_url(s3_client, job_id: str, fn_name: str) -> str:
       }
     )
   except ClientError as e:
-    logger.exception(f"{fn_name}: Error generating presigned URL: {e}")
+    logger.exception(f"Error generating presigned URL: {e}")
     raise
 
 
-def store_job_info(db_client, job_id: str, fn_name: str) -> None:
-  """Store job information in DynamoDB."""
+def store_job_info(db_client, job_id: str) -> None:
+  """Stores job information in DynamoDB."""
   utc_time_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
   try:
     db_client.put_item(
@@ -69,10 +68,12 @@ def store_job_info(db_client, job_id: str, fn_name: str) -> None:
       Item={
         'id': {'S': job_id},
         'status': {'S': JobStatus.CREATED.value},
+        'transformations': {'S': ''},
+        'labels': {'S': ''},
         'created_at': {'S': utc_time_str}
       }
     )
   except ClientError as e:
-    logger.exception(f"{fn_name}: Error storing item in DynamoDB: {e}")
+    logger.exception(f"Error storing item in DynamoDB: {e}")
     # TODO: add s3 cleanup
     raise

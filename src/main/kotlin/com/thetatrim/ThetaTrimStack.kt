@@ -126,6 +126,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
     private fun grantPermissions() {
         jobsBucket.grantWrite(postJobLambda)
         jobsTable.grantWriteData(postJobLambda)
+        jobsTable.grantReadWriteData(preprocessLambda)
     }
 
     companion object {
