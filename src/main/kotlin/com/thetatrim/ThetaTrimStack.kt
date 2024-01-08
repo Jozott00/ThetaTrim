@@ -90,6 +90,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .queueName("${PREFIX}preprocessing-queue")
             .build()
         jobsTable = Table.Builder.create(this, "JobsTable")
+            .tableName("jobs")
             .partitionKey(
                 Attribute.builder().name("id").type(AttributeType.STRING).build()
             )
@@ -123,7 +124,8 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
      * Grants all necessary permissions for interaction between services.
      */
     private fun grantPermissions() {
-        jobsBucket.grantReadWrite(postJobLambda)
+        jobsBucket.grantWrite(postJobLambda)
+        jobsTable.grantWriteData(postJobLambda)
     }
 
     companion object {
