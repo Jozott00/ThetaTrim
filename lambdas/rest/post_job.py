@@ -6,6 +6,7 @@ import boto3
 from enum import Enum
 from botocore.exceptions import ClientError
 from datetime import datetime
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -18,25 +19,36 @@ class JobStatus(Enum):
   FAILED = "FAILED"
 
 
-def handler(event, context):
+def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   """
-  Handles post job rest api calls.
+  Handles post job REST API calls.
 
-  Creates a job and a presigned url for it.
-  Also validates the job request.
+  - Creates a job entry in the DynamoDB table.
+  - Generates a presigned URL for the job.
   """
-
   fn_name = context.function_name
-
-  logger.info(f"{fn_name}: Event: {event}")
-  logger.info(f"{fn_name}: Context: {context}")
-  logger.info(f"{fn_name}: Start creating job")
+  logger.info(f"Function {fn_name} invoked with event: {event}")
 
   s3_client = boto3.client('s3')
+  db_client = boto3.client('dynamodb')
   job_id = str(uuid.uuid1())
 
+  presigned_url = generate_presigned_url(s3_client, job_id, fn_name)
+
+  store_job_info(db_client, job_id, fn_name)
+
+  logger.info(f"{fn_name}: Successfully created job {job_id}")
+
+  return {
+    'statusCode': 200,
+    'body': json.dumps({'url': presigned_url})
+  }
+
+
+def generate_presigned_url(s3_client, job_id: str, fn_name: str) -> str:
+  """Generate a presigned URL for S3 object upload."""
   try:
-    presigned_url = s3_client.generate_presigned_url(
+    return s3_client.generate_presigned_url(
       ClientMethod='put_object',
       Params={
         'Bucket': os.environ["OBJECT_BUCKET_NAME"],
@@ -44,29 +56,23 @@ def handler(event, context):
       }
     )
   except ClientError as e:
-    logger.exception(f"{fn_name}: Couldn't get a presigned URL for client: %s", e)
+    logger.exception(f"{fn_name}: Error generating presigned URL: {e}")
     raise
 
-  utc_time_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
+def store_job_info(db_client, job_id: str, fn_name: str) -> None:
+  """Store job information in DynamoDB."""
+  utc_time_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
   try:
-    db_client = boto3.client('dynamodb')
     db_client.put_item(
       TableName="jobs",
       Item={
-        'id': {'S': str(job_id)},
-        'status': {'S': str(JobStatus.CREATED.value)},
-        'created_at': {'S': str(utc_time_str)}
+        'id': {'S': job_id},
+        'status': {'S': JobStatus.CREATED.value},
+        'created_at': {'S': utc_time_str}
       }
     )
   except ClientError as e:
-    logger.exception(f"{fn_name}: Couldn't store item in DynamoDB: %s", e)
-    # TODO: cleanup S3
+    logger.exception(f"{fn_name}: Error storing item in DynamoDB: {e}")
+    # TODO: add s3 cleanup
     raise
-
-  logger.info(f"{fn_name}: Finished creating job {job_id}")
-
-  return {
-    'statusCode': 200,
-    'body': json.dumps({'url': presigned_url})
-  }
