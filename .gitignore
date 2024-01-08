@@ -5,13 +5,16 @@ target
 .settings
 *.iml
 build
+venv
 
 # CDK asset staging directory
 .cdk.staging
 cdk.out
 
-
 # IDE
 .idea
 .vscode
 *.iml
+
+# Others
+event*.json

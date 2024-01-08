@@ -1,6 +1,8 @@
 # General Information
 
-This project utilizes the [Java AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/work-with-cdk-java.html), a framework for defining cloud infrastructure in Java code and provisioning it through [AWS CloudFormation](https://aws.amazon.com/cloudformation). 
+This project utilizes the [Java AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/work-with-cdk-java.html), a framework
+for defining cloud infrastructure in Java code and provisioning it
+through [AWS CloudFormation](https://aws.amazon.com/cloudformation).
 The `cdk.json` file tells the CDK Toolkit how to execute the application.
 
 ## Useful commands
@@ -28,7 +30,27 @@ This will initiate the deployment of your application on AWS.
 
 # Local Development
 
-TODO: Update according to Java. 
+## AWS SAM
+
+[AWS Sam](https://aws.amazon.com/serverless/sam/) enables local development for serverless functions.
+Download and
+install [AWS SAM CLI here](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html).
+
+You can now run your serverless functions.
+
+- Create a file `events.json` that includes the event data that should be passed to the function
+- Start [Docker](https://www.docker.com/)
+- Run the script `./scripts/run-lambda.sh <FunctionName>`
+
+### Example:
+
+```bash
+  ./scripts/run-lambda PostJobHandler
+```
+
+## LocalStack
+
+TODO: Update according to Java.
 
 To develop the AWS application locally follow these steps:
 
