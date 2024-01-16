@@ -129,7 +129,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
         val fail = Fail.Builder.create(this, "Fail").build()
         val reduceTask = Pass.Builder.create(this, "ReduceTask").build()
         val thumbnailGenerationTask = Pass.Builder.create(this, "ThumbnailGenerationTask").build()
-        val jobStatusChoice = Choice.Builder.create(this, "JobDoneChoice").build()
+        val jobStatusChoice = Choice.Builder.create(this, "JobStatusChoice").build()
             .`when`(
                 Condition.booleanEquals("$.hasFailed", true),
                 fail
