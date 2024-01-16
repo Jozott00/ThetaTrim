@@ -3,20 +3,13 @@ import logging
 import os
 import uuid
 import boto3
-from enum import Enum
 from botocore.exceptions import ClientError
 from datetime import datetime
 from typing import Dict, Any
+from utils.job_status import JobStatus
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-class JobStatus(Enum):
-  CREATED = "CREATED"
-  RUNNING = "RUNNING"
-  COMPLETED = "COMPLETED"
-  FAILED = "FAILED"
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:

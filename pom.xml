@@ -110,6 +110,13 @@
             <version>${cdk.version}</version>
         </dependency>
 
+        <!-- https://mvnrepository.com/artifact/software.amazon.awscdk/stepfunctions -->
+        <dependency>
+            <groupId>software.amazon.awscdk</groupId>
+            <artifactId>stepfunctions</artifactId>
+            <version>0.15.1</version>
+        </dependency>
+
         <dependency>
             <groupId>software.constructs</groupId>
             <artifactId>constructs</artifactId>
