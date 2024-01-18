@@ -11,6 +11,8 @@ from utils.job_status import JobStatus
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+JOB_TABLE_NAME = os.environ["JOB_TABLE_NAME"]
+
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   """
@@ -54,12 +56,14 @@ def generate_presigned_url(s3_client, job_id: str) -> str:
 
 def store_job_info(db_client, job_id: str) -> None:
   """Stores job information in DynamoDB."""
+  logger.info(f"Store new job {job_id} in table {JOB_TABLE_NAME}")
   utc_time_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
   try:
     db_client.put_item(
-      TableName="jobs",
+      TableName=JOB_TABLE_NAME,
       Item={
-        'id': {'S': job_id},
+        'PK': {'S': f"JOB#{job_id}"},
+        'SK': {'S': "DATA"},
         'status': {'S': JobStatus.CREATED.value},
         'transformations': {'S': ''},
         'labels': {'S': ''},

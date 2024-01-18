@@ -9,6 +9,8 @@ import software.amazon.awscdk.services.dynamodb.AttributeType
 import software.amazon.awscdk.services.dynamodb.Table
 import software.amazon.awscdk.services.lambda.Code
 import software.amazon.awscdk.services.lambda.Function
+import software.amazon.awscdk.services.lambda.LayerVersion
+import software.amazon.awscdk.services.lambda.python.alpha.PythonLayerVersion
 import software.amazon.awscdk.services.lambda.Runtime
 import software.amazon.awscdk.services.lambda.eventsources.SqsEventSource
 import software.amazon.awscdk.services.s3.Bucket
@@ -64,6 +66,11 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
     private lateinit var preprocessingQueue: Queue
     private lateinit var jobsTable: Table
 
+    /**
+     * Lambda layer for utils module.
+     */
+    private lateinit var utilsLambdaLayer: LayerVersion
+
     init {
         setupResources()
         grantPermissions()
@@ -75,37 +82,60 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
      * Initializes all resources of the stack.
      */
     private fun setupResources() {
-        jobsBucket = Bucket.Builder.create(this, "JobObjectBucket")
-            .bucketName("${PREFIX}job-object-bucket")
+        
+        jobsBucket = Bucket.Builder.create(this, "JobObjectBucket1")
+            .bucketName("${PREFIX}job-object-bucket-1")
             .versioned(true)
             .build()
+
+        jobsTable = Table.Builder.create(this, "JobsTable")
+            .partitionKey(
+                Attribute.builder().name("PK").type(AttributeType.STRING).build()
+            )
+            .sortKey(
+                Attribute.builder().name("SK").type(AttributeType.STRING).build()
+            )
+            .build()
+
+        utilsLambdaLayer = createUtilsLambdaLayer()
+
         postJobLambda = Function.Builder.create(this, "PostJobHandler")
             .functionName("${PREFIX}post-job-handler")
-            .runtime(Runtime.PYTHON_3_12)
+            .runtime(Runtime.PYTHON_3_11)
             .handler("post_job.handler")
             .code(Code.fromAsset("lambdas/rest"))
             .environment(
                 mapOf(
-                    "OBJECT_BUCKET_NAME" to jobsBucket.bucketName
+                    "OBJECT_BUCKET_NAME" to jobsBucket.bucketName,
+                    "JOB_TABLE_NAME" to jobsTable.tableName
                 )
             )
+            .layers(mutableListOf(utilsLambdaLayer))
             .build()
         preprocessLambda = Function.Builder.create(this, "PreprocessHandler")
             .functionName("${PREFIX}preprocess-handler")
-            .runtime(Runtime.PYTHON_3_12)
+            .runtime(Runtime.PYTHON_3_11)
             .handler("preprocess.handler")
             .code(Code.fromAsset("lambdas/video_processing"))
             .environment(
                 mapOf(
-                    "OBJECT_BUCKET_NAME" to jobsBucket.bucketName
+                    "OBJECT_BUCKET_NAME" to jobsBucket.bucketName,
+                    "JOB_TABLE_NAME" to jobsTable.tableName
                 )
             )
+            .layers(mutableListOf(utilsLambdaLayer))
             .build()
         checkJobStatusLambda = Function.Builder.create(this, "CheckJobStatusHandler")
             .functionName("${PREFIX}check-job-status-handler")
-            .runtime(Runtime.PYTHON_3_12)
+            .runtime(Runtime.PYTHON_3_11)
             .handler("check_job_status.handler")
             .code(Code.fromAsset("lambdas/reducer"))
+            .environment(
+                mapOf(
+                    "JOB_TABLE_NAME" to jobsTable.tableName
+                )
+            )
+            .layers(mutableListOf(utilsLambdaLayer))
             .build()
         reducerStateMachine = generateReducerSateMachine()
         restApi = RestApi.Builder.create(this, "RestAPI")
@@ -113,12 +143,6 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .build()
         preprocessingQueue = Queue.Builder.create(this, "PreprocessingQueue")
             .queueName("${PREFIX}preprocessing-queue")
-            .build()
-        jobsTable = Table.Builder.create(this, "JobsTable")
-            .tableName("jobs")
-            .partitionKey(
-                Attribute.builder().name("id").type(AttributeType.STRING).build()
-            )
             .build()
     }
 
@@ -181,6 +205,17 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
         jobsBucket.grantWrite(postJobLambda)
         jobsTable.grantWriteData(postJobLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
+    }
+
+
+    private fun createUtilsLambdaLayer(): LayerVersion {
+
+        return PythonLayerVersion.Builder
+            .create(this, "UtilsLayer")
+            .entry("lambdas/common_layer")
+            .compatibleRuntimes(mutableListOf(Runtime.PYTHON_3_11))
+            .description("A layer that contains the utils module. Can be used by oder lambdas.")
+            .build()
     }
 
     companion object {

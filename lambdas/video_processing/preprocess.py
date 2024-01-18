@@ -1,11 +1,15 @@
 import json
 import logging
 import boto3
+import os
+
+JOB_TABLE_NAME = os.environ["JOB_TABLE_NAME"]
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3_deliminator = "%3A"
+
 
 def handler(event, context):
   """
@@ -23,12 +27,11 @@ def handler(event, context):
   logger.info(f"Job ID: {job_id}")
 
   item = db_client.get_item(
-    TableName='jobs',
-    Key={'id': {'S': job_id}}
+    TableName=JOB_TABLE_NAME,
+    Key={'PK': {'S': f"JOB#{job_id}"}, 'SK': {'S': "INFO"}}
   )
-  
-  logger.info(f"Success")
 
+  logger.info(f"Success")
 
   # TODO: implement
 
@@ -36,6 +39,7 @@ def handler(event, context):
     'statusCode': 200,
     'body': '{}'
   }
+
 
 def extract_data(event, context):
   """
