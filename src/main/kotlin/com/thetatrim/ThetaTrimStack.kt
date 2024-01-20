@@ -314,6 +314,6 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
         /**
          * Prefix of all resource names.
          */
-        private const val PREFIX = "thetatrim2-"
+        private const val PREFIX = "thetatrim-"
     }
 }
