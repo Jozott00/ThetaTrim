@@ -34,10 +34,17 @@ def handler(event, context):
   logger.info(f"Success")
 
   # TODO: implement
+  chunks = [
+    {
+      'objectUrl': 'chunk1'
+    },
+    {
+      'objectUrl': 'chunk2'
+    }
+  ]
 
   return {
-    'statusCode': 200,
-    'body': '{}'
+    'chunks': chunks
   }
 
 
