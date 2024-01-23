@@ -1,5 +1,6 @@
 package com.thetatrim
 
+import software.amazon.awscdk.Duration
 import software.amazon.awscdk.Stack
 import software.amazon.awscdk.StackProps
 import software.amazon.awscdk.services.apigateway.LambdaIntegration
@@ -8,6 +9,7 @@ import software.amazon.awscdk.services.dynamodb.Attribute
 import software.amazon.awscdk.services.dynamodb.AttributeType
 import software.amazon.awscdk.services.dynamodb.Table
 import software.amazon.awscdk.services.lambda.Code
+import software.amazon.awscdk.services.lambda.EventSourceMapping
 import software.amazon.awscdk.services.lambda.Function
 import software.amazon.awscdk.services.lambda.LayerVersion
 import software.amazon.awscdk.services.lambda.python.alpha.PythonLayerVersion
@@ -67,9 +69,11 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
     private lateinit var jobsTable: Table
 
     /**
-     * Lambda layer for utils module.
+     * Lambda layers.
      */
     private lateinit var utilsLambdaLayer: LayerVersion
+    private lateinit var ffmpegLambdaLayer: LayerVersion
+
 
     init {
         setupResources()
@@ -82,7 +86,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
      * Initializes all resources of the stack.
      */
     private fun setupResources() {
-        
+
         jobsBucket = Bucket.Builder.create(this, "JobObjectBucket1")
             .bucketName("${PREFIX}job-object-bucket-1")
             .versioned(true)
@@ -97,7 +101,20 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             )
             .build()
 
-        utilsLambdaLayer = createUtilsLambdaLayer()
+        utilsLambdaLayer = PythonLayerVersion.Builder
+            .create(this, "UtilsLayer")
+            .entry("lambdas/common_layer")
+            .compatibleRuntimes(mutableListOf(Runtime.PYTHON_3_11))
+            .description("A layer that contains the utils module. Can be used by oder lambdas.")
+            .build()
+
+        ffmpegLambdaLayer = LayerVersion.Builder
+            .create(this, "FFMpegLayer")
+            .layerVersionName("ffmpeg")
+            .code(Code.fromAsset("lambdas/ffmpeg_layer"))
+            .compatibleRuntimes(mutableListOf(Runtime.PYTHON_3_11))
+            .license("http://www.ffmpeg.org/legal.html")
+            .build()
 
         postJobLambda = Function.Builder.create(this, "PostJobHandler")
             .functionName("${PREFIX}post-job-handler")
@@ -114,6 +131,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .build()
         preprocessLambda = Function.Builder.create(this, "PreprocessHandler")
             .functionName("${PREFIX}preprocess-handler")
+            .timeout(Duration.seconds(10)) // TODO: Check how much we need
             .runtime(Runtime.PYTHON_3_11)
             .handler("preprocess.handler")
             .code(Code.fromAsset("lambdas/video_processing"))
@@ -123,7 +141,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
                     "JOB_TABLE_NAME" to jobsTable.tableName
                 )
             )
-            .layers(mutableListOf(utilsLambdaLayer))
+            .layers(mutableListOf(utilsLambdaLayer, ffmpegLambdaLayer))
             .build()
         checkJobStatusLambda = Function.Builder.create(this, "CheckJobStatusHandler")
             .functionName("${PREFIX}check-job-status-handler")
@@ -141,6 +159,8 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
         restApi = RestApi.Builder.create(this, "RestAPI")
             .restApiName("${PREFIX}rest-api")
             .build()
+
+
         preprocessingQueue = Queue.Builder.create(this, "PreprocessingQueue")
             .queueName("${PREFIX}preprocessing-queue")
             .build()
@@ -203,20 +223,12 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
      */
     private fun grantPermissions() {
         jobsBucket.grantWrite(postJobLambda)
+        jobsBucket.grantReadWrite(preprocessLambda)
         jobsTable.grantWriteData(postJobLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
+        preprocessingQueue.grantConsumeMessages(preprocessLambda)
     }
 
-
-    private fun createUtilsLambdaLayer(): LayerVersion {
-
-        return PythonLayerVersion.Builder
-            .create(this, "UtilsLayer")
-            .entry("lambdas/common_layer")
-            .compatibleRuntimes(mutableListOf(Runtime.PYTHON_3_11))
-            .description("A layer that contains the utils module. Can be used by oder lambdas.")
-            .build()
-    }
 
     companion object {
         /**
