@@ -20,7 +20,6 @@ To deploy the application on AWS, begin by installing the AWS Cloud Development 
 You can find the [aws-cdk package here](https://www.npmjs.com/package/aws-cdk).
 Once installed, use the command `aws configure` to set up the AWS account you intend to deploy to.
 You might want to create a new [IAM user](https://aws.amazon.com/iam/) for this purpose.
-Note that the stack will then be deployed to the specified environment, such as `eu-west-3`, `us-east-1`, etc.
 
 Once you've configured your user, you're ready to deploy the stack to your AWS environment.
 Start by bootstrapping the stack using the command `cdk bootstrap`.
@@ -45,7 +44,7 @@ You can now run your serverless functions.
 ### Example:
 
 ```bash
-  ./scripts/run-lambda PostJobHandler
+  ./scripts/run-lambda.sh PostJobHandler
 ```
 
 ## LocalStack
