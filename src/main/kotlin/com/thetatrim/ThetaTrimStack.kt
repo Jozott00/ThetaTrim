@@ -130,6 +130,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .create(this, "FFMpegLayer")
             .layerVersionName("ffmpeg")
             .code(Code.fromAsset("lambdas/ffmpeg_layer"))
+//            .entry("lambdas/ffmpeg_layer")
             .compatibleRuntimes(mutableListOf(Runtime.PYTHON_3_11))
             .license("http://www.ffmpeg.org/legal.html")
             .build()
