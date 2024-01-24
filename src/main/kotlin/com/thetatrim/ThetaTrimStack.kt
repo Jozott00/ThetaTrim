@@ -130,7 +130,6 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .create(this, "FFMpegLayer")
             .layerVersionName("ffmpeg")
             .code(Code.fromAsset("lambdas/ffmpeg_layer"))
-//            .entry("lambdas/ffmpeg_layer")
             .compatibleRuntimes(mutableListOf(Runtime.PYTHON_3_11))
             .license("http://www.ffmpeg.org/legal.html")
             .build()
@@ -164,6 +163,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .build()
         processChunkLambda = Function.Builder.create(this, "ProcessChunkHandler")
             .functionName("${PREFIX}process-chunk-handler")
+            .timeout(Duration.seconds(60)) // TODO: Check how much we need
             .runtime(Runtime.PYTHON_3_11)
             .handler("process_chunk.handler")
             .code(Code.fromAsset("lambdas/video_processing"))
@@ -173,7 +173,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
                     "JOB_TABLE_NAME" to jobsTable.tableName
                 )
             )
-            .layers(mutableListOf(utilsLambdaLayer))
+            .layers(mutableListOf(utilsLambdaLayer, ffmpegLambdaLayer))
             .build()
         extractDataLambda = Function.Builder.create(this, "ExtractDataHandler")
             .functionName("${PREFIX}extract-data-handler")
@@ -317,6 +317,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
     private fun grantPermissions() {
         jobsBucket.grantWrite(postJobLambda)
         jobsBucket.grantReadWrite(preprocessLambda)
+        jobsBucket.grantReadWrite(processChunkLambda)
         jobsTable.grantWriteData(postJobLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
         preprocessingQueue.grantConsumeMessages(preprocessLambda)
