@@ -38,7 +38,9 @@ def handler(event, context):
   s3_client.upload_file(local_out_path, OBJ_BUCKET_NAME, object_url)
   logger.info("Done.")
 
-  return {}
+  return {
+    "objectUrl": object_url
+  }
 
 
 def process_chunk(input_path, output_path):
