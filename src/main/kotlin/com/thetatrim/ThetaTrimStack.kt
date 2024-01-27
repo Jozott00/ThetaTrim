@@ -106,7 +106,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
     private fun setupResources() {
 
         jobsBucket = Bucket.Builder.create(this, "JobObjectBucket1")
-            .bucketName("${PREFIX}job-object-bucket-1")
+            .bucketName("${PREFIX}-roland-job-object-bucket-1")
             .versioned(true)
             .build()
 
