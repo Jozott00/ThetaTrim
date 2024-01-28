@@ -6,6 +6,7 @@ import subprocess
 import shlex
 import glob
 import ffmpeg
+from utils import constants
 
 JOB_TABLE_NAME = os.environ["JOB_TABLE_NAME"]
 OBJ_BUCKET_NAME = os.environ["OBJECT_BUCKET_NAME"]
@@ -23,38 +24,63 @@ def handler(event, context):
 
   Performs trimming and chunk splitting of the video.
   """
-  # TODO: Replace by id from event
-  job_id = "test"
-  orig_video_key = "test_small.mp4"
-  # TODO: Replace upper by this
-  # job_id, orig_video_key = extract_data(event, context)
-  video_url = "/tmp/original.mp4"
+  logger.info(f"Invoked with event: {event}")
 
-  logger.info(f"Download video {orig_video_key} to {video_url}")
-  s3_client.download_file(OBJ_BUCKET_NAME, orig_video_key, video_url)
+  job_id, orig_video_key, extension = extract_data(event, context)
 
-  logger.info(f"Start splitting video")
-  (
-    ffmpeg
-    .input(video_url)
-    .output("/tmp/CHUNK-%d.mp4", segment_time=5, acodec='copy', f='segment', vcodec='copy',
-            reset_timestamps=1, map=0)
-    .run()
-  )
+  # delete local storage
+  os.system("rm /tmp/*")
+
+  video_url = s3_client.generate_presigned_url('get_object',
+                                               Params={
+                                                 'Bucket': OBJ_BUCKET_NAME,
+                                                 'Key': orig_video_key,
+                                               },
+                                               ExpiresIn=3600)
+
+  chunk_output_format = f"/tmp/CHUNK-%d.{extension}"
+  logger.info(
+    f"Start splitting video to {chunk_output_format} with chunk size of ~{constants.TARGET_CHUNK_SECS} seconds")
+  # (
+  #   ffmpeg
+  #   .input(video_url)
+  #   .output(chunk_output_format,
+  #           constants.TARGET_CHUNK_SECS,
+  #           c='copy',
+  #           f='segment',
+  #           reset_timestamps=1
+  #           )
+  #   .run()
+  # )
+  command = [
+    'ffmpeg',
+    '-i', video_url,
+    '-c', 'copy',
+    '-f', 'segment',
+    '-segment_time', str(constants.TARGET_CHUNK_SECS),
+    '-reset_timestamps', '1',
+    chunk_output_format
+  ]
+  subprocess.run(command, check=True)
 
   # upload chunks to s3
   logger.info("Uploading chunks to S3")
   chunks = []
 
-  for filepath in glob.glob('/tmp/CHUNK-*.mp4'):
+  for filepath in glob.glob(f'/tmp/CHUNK-*.{extension}'):
     filename = os.path.basename(filepath)
+    size = os.path.getsize(filepath)
     obj_key = f"{job_id}/{filename}"
     s3_client.upload_file(filepath, OBJ_BUCKET_NAME, obj_key)
-    chunks.append({"objectUrl": obj_key})
+    chunks.append({"key": obj_key, "jobId": job_id, "extension": extension, "size": size})
 
   logger.info("Chunks uploaded to S3")
 
+  # delete local storage
+  os.system("rm /tmp/*")
+
   return {
+    'jobId': job_id,
     'chunks': chunks
   }
 
@@ -63,8 +89,4 @@ def extract_data(event, context):
   """
   Extracts relevant data from the event and context.
   """
-
-  body = json.loads(event["Records"][0]["body"])
-  s3_key = body["Records"][0]["s3"]["object"]["key"]
-  job_id = s3_key.split(s3_deliminator)[0]
-  return job_id, s3_key
+  return event["jobId"], event["key"], event["extension"]

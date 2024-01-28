@@ -3,6 +3,8 @@ import boto3
 import os
 import logging
 
+from utils import utils
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -17,24 +19,32 @@ def handler(event, context):
   sfn_client = boto3.client('stepfunctions')
   state_machine_arn = os.environ["STATE_MACHINE_ARN"]
 
-  try:
-    # Start execution of the state machine
-    response = sfn_client.start_execution(
-      stateMachineArn=state_machine_arn,
-      input=json.dumps(event)
-    )
+  s3_event = event["Records"][0]
+  object = s3_event["s3"]["object"]
 
-    logger.info(f"Success")
+  jobid = utils.get_jobid_from_key(object["key"])
+  ext = utils.get_extension_from_key(object["key"])
 
-    # Return the response
-    return {
-      'statusCode': 200,
-      'body': json.dumps('State machine execution started successfully'),
-      'response': response
-    }
-  except Exception as e:
-    logger.info(f"Error")
-    return {
-      'statusCode': 500,
-      'body': json.dumps('Error starting state machine execution')
-    }
+  # example input:
+  # {
+  #   "key": "test/original.mp4",
+  #   "size": 673896,
+  #   "jobId": "test",
+  #   "extension": "mp4"
+  # }
+  exec_input = {
+    "jobId": jobid,
+    "key": object['key'],
+    "extension": ext,
+    "size": object["size"]
+  }
+
+  logger.info(f"Invoke video processing with input: \n{exec_input}")
+
+  # Start execution of the state machine
+  response = sfn_client.start_execution(
+    stateMachineArn=state_machine_arn,
+    input=json.dumps(exec_input)
+  )
+
+  logger.info(f"Success")
