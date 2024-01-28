@@ -11,7 +11,6 @@ OBJ_BUCKET_NAME = os.environ["OBJECT_BUCKET_NAME"]
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-s3_deliminator = "%3A"
 s3_client = boto3.client('s3')
 
 

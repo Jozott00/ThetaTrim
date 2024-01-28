@@ -1,6 +1,7 @@
 package com.thetatrim
 
 import software.amazon.awscdk.Duration
+import software.amazon.awscdk.Size
 import software.amazon.awscdk.Stack
 import software.amazon.awscdk.StackProps
 import software.amazon.awscdk.services.apigateway.LambdaIntegration
@@ -190,6 +191,8 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .build()
         reduceChunksLambda = Function.Builder.create(this, "ReduceChunksHandler")
             .functionName("${PREFIX}reduce-chunks-handler")
+            .memorySize(1024) // 1 GB memory
+            .ephemeralStorageSize(Size.gibibytes(1)) // todo remove!
             .timeout(Duration.seconds(60)) // TODO: Check how much we need
             .runtime(Runtime.PYTHON_3_11)
             .handler("reduce_chunks.handler")
