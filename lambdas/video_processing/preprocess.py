@@ -39,7 +39,7 @@ def handler(event, context):
     .input(video_url)
     .output("/tmp/CHUNK-%d.mp4", segment_time=5, acodec='copy', f='segment', vcodec='copy',
             reset_timestamps=1, map=0)
-    .run(pipe_stdout=True, pipe_stderr=True)
+    .run()
   )
 
   # upload chunks to s3

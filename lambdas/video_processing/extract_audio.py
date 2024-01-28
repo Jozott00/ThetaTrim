@@ -10,9 +10,9 @@ logger.setLevel(logging.INFO)
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   """
-  Extracts data from the whole original video (e.g. meta-data, audio, etc.).
+  Extracts the audio from the original video.
   """
-  
+
   logger.info(f"Invoked with event: {event}")
 
   # TODO: implement job
