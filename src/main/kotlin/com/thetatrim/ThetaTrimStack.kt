@@ -1,6 +1,7 @@
 package com.thetatrim
 
 import software.amazon.awscdk.Duration
+import software.amazon.awscdk.Size
 import software.amazon.awscdk.Stack
 import software.amazon.awscdk.StackProps
 import software.amazon.awscdk.services.apigateway.LambdaIntegration
@@ -169,11 +170,15 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .build()
 
         preprocessLambda = lambdaBuilderFactory("lambdas/video_processing/preprocess")
-            .timeout(Duration.seconds(10))
+            .timeout(Duration.seconds(60))
+//            .memorySize(1024)
+//            .ephemeralStorageSize(Size.gibibytes(1))
             .build()
 
         processChunkLambda = lambdaBuilderFactory("lambdas/video_processing/process_chunk")
             .timeout(Duration.seconds(60))
+//            .memorySize(1024)
+//            .ephemeralStorageSize(Size.gibibytes(1))
             .build()
 
         extractMetadataLambda = lambdaBuilderFactory("lambdas/video_processing/extract_metadata")
@@ -186,6 +191,8 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
 
         reduceChunksLambda = lambdaBuilderFactory("lambdas/video_processing/reduce_chunks")
             .timeout(Duration.seconds(60))
+//            .memorySize(1024)
+//            .ephemeralStorageSize(Size.gibibytes(1))
             .build()
 
         extractLabelsLambda = lambdaBuilderFactory("lambdas/video_processing/extract_labels")
@@ -193,9 +200,9 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .build()
 
         generateThumbnailLambda = lambdaBuilderFactory("lambdas/video_processing/generate_thumbnail")
-            .memorySize(1024)
-            .ephemeralStorageSize(Size.gigabtyes(1))
             .timeout(Duration.seconds(60))
+//            .memorySize(1024)
+//            .ephemeralStorageSize(Size.gibibytes(1))
             .build()
 
         handleErrorLambda = lambdaBuilderFactory("lambdas/video_processing/handle_error")
@@ -272,6 +279,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .build()
             .iterator(processChunkTask)
             .addCatch(handleProcessingErrorTask)
+            
             .next(postProcessingParallel)
         val preprocessingTask = LambdaInvoke.Builder.create(this, "PreprocessingTask")
             .lambdaFunction(preprocessLambda)

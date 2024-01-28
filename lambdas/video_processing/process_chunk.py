@@ -18,28 +18,33 @@ def handler(event, context):
   """
   Processes a video chunk.
   """
-  object_url = extract_data(event, context)
-  basename = os.path.basename(object_url)
+
+  job_id, object_key, size, extension = extract_data(event, context)
+
+  basename = os.path.basename(object_key)
   local_in_path = f"/tmp/{basename}"
   local_out_path = f"/tmp/out-{basename}"
-  logger.info(f"Processing {object_url}")
+  logger.info(f"Processing {object_key}")
 
   mp4_files = glob.glob("/tmp/*.mp4")
   logger.info(f"MP4 files in tmp before execution {mp4_files}")
 
-  logger.info(f"Download video {object_url} to {local_in_path}")
-  s3_client.download_file(OBJ_BUCKET_NAME, object_url, local_in_path)
+  logger.info(f"Download video {object_key} to {local_in_path}")
+  chunk_url = s3_client.generate_presigned_url('get_object',
+                                               Params={
+                                                 'Bucket': OBJ_BUCKET_NAME,
+                                                 'Key': object_key,
+                                               },
+                                               ExpiresIn=3600)
 
   logger.info(f"Start chunk processing...")
-  process_chunk(local_in_path, local_out_path)
+  process_chunk(chunk_url, local_out_path)
 
-  logger.info(f"\nReplace {OBJ_BUCKET_NAME}/{object_url} by result...")
-  s3_client.upload_file(local_out_path, OBJ_BUCKET_NAME, object_url)
+  logger.info(f"\nReplace {OBJ_BUCKET_NAME}/{object_key} by result...")
+  s3_client.upload_file(local_out_path, OBJ_BUCKET_NAME, object_key)
   logger.info("Done.")
 
-  return {
-    "objectUrl": object_url
-  }
+  return event
 
 
 def process_chunk(input_path, output_path):
@@ -54,4 +59,4 @@ def process_chunk(input_path, output_path):
 
 
 def extract_data(event, context):
-  return event['objectUrl']
+  return event['jobId'], event['key'], event['size'], event['extension']

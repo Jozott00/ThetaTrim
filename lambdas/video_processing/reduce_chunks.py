@@ -8,6 +8,7 @@ import os
 
 import boto3
 from utils import s3_utils
+from utils import utils
 
 JOB_TABLE_NAME = os.environ["JOB_TABLE_NAME"]
 OBJ_BUCKET_NAME = os.environ["OBJECT_BUCKET_NAME"]
@@ -28,8 +29,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   logger.info(f"Invoked with event: {event}")
 
   keys = extract_data(event, context)
-  jobid = keys[0].split("/")[0]
-  ext = keys[0].split(".")[1]
+  jobid = utils.get_jobid_from_key(keys[0])
+  ext = utils.get_extension_from_key(keys[0])
   result_file = f"{jobid}/RESULT.{ext}"
   chunk_files = download_chunks(keys)
 
@@ -111,4 +112,4 @@ def generate_presigned_urls(keys: list[str], expiration=3600) -> list[str]:
 
 
 def extract_data(event, context) -> list[str]:
-  return [e['objectUrl'] for e in event['chunks']]
+  return [e['key'] for e in event['chunks']]
