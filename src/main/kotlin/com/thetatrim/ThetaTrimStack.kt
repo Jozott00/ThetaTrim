@@ -11,22 +11,21 @@ import software.amazon.awscdk.services.dynamodb.Table
 import software.amazon.awscdk.services.lambda.Code
 import software.amazon.awscdk.services.lambda.Function
 import software.amazon.awscdk.services.lambda.LayerVersion
-import software.amazon.awscdk.services.lambda.python.alpha.PythonLayerVersion
 import software.amazon.awscdk.services.lambda.Runtime
-import software.amazon.awscdk.services.lambda.eventsources.SqsEventSource
+import software.amazon.awscdk.services.lambda.python.alpha.PythonLayerVersion
+import software.amazon.awscdk.services.logs.LogGroup
 import software.amazon.awscdk.services.s3.Bucket
 import software.amazon.awscdk.services.s3.EventType
 import software.amazon.awscdk.services.s3.NotificationKeyFilter
-import software.amazon.awscdk.services.s3.notifications.SqsDestination
-import software.amazon.awscdk.services.sqs.Queue
-import software.amazon.awscdk.services.stepfunctions.DefinitionBody
-import software.amazon.awscdk.services.stepfunctions.StateMachine
+import software.amazon.awscdk.services.s3.notifications.LambdaDestination
+import software.amazon.awscdk.services.stepfunctions.*
 import software.amazon.awscdk.services.stepfunctions.Map
-import software.amazon.awscdk.services.stepfunctions.Parallel
-import software.amazon.awscdk.services.stepfunctions.Pass
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvoke
 import software.constructs.Construct
 import java.util.*
+import kotlin.collections.hashMapOf
+import kotlin.collections.joinToString
+import kotlin.collections.mutableListOf
 
 /** Converts a String from snake_case to PascalCase. */
 fun String.snakeToPascalCase(): String = split('_').joinToString("") {
@@ -40,10 +39,17 @@ fun String.snakeToKebabCase(): String = replace('_', '-').lowercase()
 
 class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, props: StackProps? = null) :
     Stack(scope, id, props) {
+    private var environmentMap = hashMapOf<String, String>()
+
     /**
      * S3 Bucket for storing job objects such as videos and frames.
      */
     private lateinit var jobsBucket: Bucket
+
+    /**
+     * Lambda function for triggering the video processing state-machine.
+     */
+    private lateinit var triggerVideoProcessingLambda: Function
 
     /**
      * Lambda function for creating jobs and presigned urls.
@@ -104,11 +110,6 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
      * Rest API for handling different endpoints.
      */
     private lateinit var restApi: RestApi
-
-    /**
-     * Queue for newly created videos to be further processed.
-     */
-    private lateinit var preprocessingQueue: Queue
     private lateinit var jobsTable: Table
 
     /**
@@ -135,6 +136,8 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .versioned(true)
             .build()
 
+        environmentMap.put("OBJECT_BUCKET_NAME", jobsBucket.bucketName)
+
         jobsTable = Table.Builder.create(this, "JobsTable")
             .partitionKey(
                 Attribute.builder().name("PK").type(AttributeType.STRING).build()
@@ -143,6 +146,8 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
                 Attribute.builder().name("SK").type(AttributeType.STRING).build()
             )
             .build()
+
+        environmentMap.put("JOB_TABLE_NAME", jobsTable.tableName)
 
         utilsLambdaLayer = PythonLayerVersion.Builder
             .create(this, "UtilsLayer")
@@ -201,12 +206,15 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
 
         videoProcessingStateMachine = generateVideoProcessingSateMachine()
 
-        restApi = RestApi.Builder.create(this, "RestAPI")
-            .restApiName("${PREFIX}rest-api")
+        environmentMap.put("STATE_MACHINE_ARN", videoProcessingStateMachine.stateMachineArn)
+
+        triggerVideoProcessingLambda = lambdaBuilderFactory("lambdas/triggers/trigger_video_processing")
+            .timeout(Duration.seconds(60))
             .build()
 
-        preprocessingQueue = Queue.Builder.create(this, "PreprocessingQueue")
-            .queueName("${PREFIX}preprocessing-queue")
+
+        restApi = RestApi.Builder.create(this, "RestAPI")
+            .restApiName("${PREFIX}rest-api")
             .build()
     }
 
@@ -218,14 +226,15 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .lambdaFunction(cleanupLambda)
             .outputPath("$.Payload")
             .build()
+        // TODO: consider notifying with step-functions construct (https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_stepfunctions_tasks.SnsPublish.html)
         val notifySuccess = Pass.Builder.create(this, "NotifySuccess").build()
         val notifyProcessingError = Pass.Builder.create(this, "NotifyProcessingError").build().next(cleanupTask)
+        val notifyReduceError = Pass.Builder.create(this, "NotifyReduceError").build()
         val handleProcessingErrorTask = LambdaInvoke.Builder.create(this, "HandleProcessingError")
             .lambdaFunction(handleErrorLambda)
             .outputPath("$.Payload")
             .build()
             .next(notifyProcessingError)
-        val notifyReduceError = Pass.Builder.create(this, "NotifyReduceError").build()
         val handleReduceErrorTask = LambdaInvoke.Builder.create(this, "HandleReduceError")
             .lambdaFunction(handleErrorLambda)
             .outputPath("$.Payload")
@@ -240,7 +249,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .outputPath("$.Payload")
             .build()
             .next(thumbnailGenerationTask)
-        val reduceChunksTask = LambdaInvoke.Builder.create(this, "ReduceTask")
+        val reduceChunksTask = LambdaInvoke.Builder.create(this, "ReduceChunksTask")
             .lambdaFunction(reduceChunksLambda)
             .outputPath("$.Payload")
             .build()
@@ -281,8 +290,13 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .branch(extractMetadataTask)
             .branch(extractAudioTask)
             .branch(preprocessingTask)
+        val logGroup = LogGroup.Builder.create(this, "VideoProcessingLogGroup")
+            .build()
         return StateMachine.Builder.create(this, "VideoProcessingStateMachine")
             .definitionBody(DefinitionBody.fromChainable(processingParallel))
+            .logs(
+                LogOptions.builder().destination(logGroup).level(LogLevel.ALL).build()
+            )
             .build()
     }
 
@@ -299,14 +313,14 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
      * Configures all triggers between services.
      */
     private fun configureTriggers() {
+        videoProcessingStateMachine.grantStartExecution(triggerVideoProcessingLambda)
         jobsBucket.addEventNotification(
             EventType.OBJECT_CREATED,
-            SqsDestination(preprocessingQueue),
+            LambdaDestination(triggerVideoProcessingLambda),
             NotificationKeyFilter.builder()
                 .suffix("original.mp4")
                 .build()
         )
-        preprocessLambda.addEventSource(SqsEventSource(preprocessingQueue))
     }
 
     /**
@@ -319,7 +333,6 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
         jobsBucket.grantReadWrite(reduceChunksLambda)
         jobsTable.grantWriteData(postJobLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
-        preprocessingQueue.grantConsumeMessages(preprocessLambda)
     }
 
     /**
@@ -334,12 +347,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .runtime(Runtime.PYTHON_3_11)
             .handler("${fileName}.handler")
             .code(Code.fromAsset(directoryPath))
-            .environment(
-                mapOf(
-                    "OBJECT_BUCKET_NAME" to jobsBucket.bucketName,
-                    "JOB_TABLE_NAME" to jobsTable.tableName
-                )
-            )
+            .environment(environmentMap)
             .layers(mutableListOf(utilsLambdaLayer, ffmpegLambdaLayer))
     }
 
