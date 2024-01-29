@@ -171,7 +171,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
 
         preprocessLambda = lambdaBuilderFactory("lambdas/video_processing/preprocess")
             .timeout(Duration.seconds(60))
-//            .memorySize(1024)
+            .memorySize(512)
 //            .ephemeralStorageSize(Size.gibibytes(1))
             .build()
 
@@ -279,7 +279,6 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .build()
             .iterator(processChunkTask)
             .addCatch(handleProcessingErrorTask)
-            
             .next(postProcessingParallel)
         val preprocessingTask = LambdaInvoke.Builder.create(this, "PreprocessingTask")
             .lambdaFunction(preprocessLambda)
