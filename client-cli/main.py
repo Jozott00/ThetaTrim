@@ -1,8 +1,10 @@
 import argparse
 import requests
 import yaml
-import boto3
-from botocore.exceptions import NoCredentialsError
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 
 def parse_arguments():
@@ -18,10 +20,10 @@ def read_config(config_path):
 
 
 def send_rest_call(config):
-    # Replace 'endpoint_url' with your actual endpoint
-    response = requests.post("endpoint_url", json=config)
+    endpoint_url = os.getenv("API_ENDPOINT")
+    response = requests.post(endpoint_url, json=config)
     response.raise_for_status()
-    return response.json()['upload_url']
+    return response.json()["url"]
 
 
 def upload_to_s3(upload_url, video_path):
