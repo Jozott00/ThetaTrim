@@ -1,5 +1,6 @@
 package com.thetatrim
 
+import software.amazon.awscdk.AssetOptions
 import software.amazon.awscdk.Duration
 import software.amazon.awscdk.Size
 import software.amazon.awscdk.Stack
@@ -170,14 +171,14 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .build()
 
         preprocessLambda = lambdaBuilderFactory("lambdas/video_processing/preprocess")
-            .timeout(Duration.minutes(5))
-            .memorySize(512)
+            .timeout(Duration.minutes(2))
+            .memorySize(2048)
 //            .ephemeralStorageSize(Size.gibibytes(1))
             .build()
 
         processChunkLambda = lambdaBuilderFactory("lambdas/video_processing/process_chunk")
-            .timeout(Duration.seconds(60))
-//            .memorySize(1024)
+            .timeout(Duration.seconds(120))
+            .memorySize(2048)
 //            .ephemeralStorageSize(Size.gibibytes(1))
             .build()
 
@@ -191,6 +192,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
 
         reduceChunksLambda = lambdaBuilderFactory("lambdas/video_processing/reduce_chunks")
             .timeout(Duration.seconds(60))
+            .memorySize(2048)
 //            .memorySize(1024)
 //            .ephemeralStorageSize(Size.gibibytes(1))
             .build()

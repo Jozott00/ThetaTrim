@@ -12,3 +12,7 @@ class ApplicationError(Exception):
 
 class FFmpegError(ApplicationError):
   pass
+
+
+class ConfigError(ApplicationError):
+  pass
