@@ -26,20 +26,23 @@ def handler(event, context):
   job_id, object_key, size, extension = extract_data(event, context)
 
   basename = os.path.basename(object_key)
-  local_in_path = f"/tmp/{basename}"
   local_out_path = f"/tmp/out-{basename}"
   logger.info(f"Processing {object_key}")
 
   mp4_files = glob.glob("/tmp/*.mp4")
   logger.info(f"MP4 files in tmp before execution {mp4_files}")
 
-  logger.info(f"Download video {object_key} to {local_in_path}")
   chunk_url = s3_client.generate_presigned_url('get_object',
                                                Params={
                                                  'Bucket': OBJ_BUCKET_NAME,
                                                  'Key': object_key,
                                                },
                                                ExpiresIn=3600)
+
+  configs = get_job_config(job_id)
+  logger.info(f"Loading config {configs}")
+  ffmpeg_command = build_command(configs)
+  logger.info(f"Executing command: \n{ffmpeg_command.compile()}")
 
   logger.info(f"Start chunk processing...")
   process_chunk(chunk_url, local_out_path)
@@ -62,8 +65,10 @@ def process_chunk(input_path, output_path):
   )
 
 
-def build_command(config: dict['str', any]) -> Any:
-  pass
+def build_command(chunk_url: str, config: dict['str', any]) -> Any:
+  return (ffmpeg
+          .input(chunk_url)
+          )
 
 
 def get_job_config(job_id: str) -> dict[Any: Any]:

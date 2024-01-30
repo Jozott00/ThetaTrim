@@ -38,7 +38,7 @@ fun String.snakeToPascalCase(): String = split('_').joinToString("") {
 /** Converts a String from snake_case to kebab-case. */
 fun String.snakeToKebabCase(): String = replace('_', '-').lowercase()
 
-class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, props: StackProps? = null) :
+class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String?, props: StackProps? = null) :
     Stack(scope, id, props) {
     private var environmentMap = hashMapOf<String, String>()
 
@@ -133,7 +133,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
     private fun setupResources() {
 
         jobsBucket = Bucket.Builder.create(this, "JobObjectBucket1")
-            .bucketName("${PREFIX}-roland-job-object-bucket-1")
+            .bucketName("${PREFIX}job-object-bucket-${this.account}") // account suffix to avoid name conflicts
             .versioned(true)
             .build()
 
@@ -343,6 +343,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
         jobsBucket.grantReadWrite(reduceChunksLambda)
         jobsTable.grantWriteData(postJobLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
+        jobsTable.grantReadWriteData(processChunkLambda)
     }
 
     /**

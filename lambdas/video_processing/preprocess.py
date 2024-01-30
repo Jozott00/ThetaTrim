@@ -41,6 +41,7 @@ def handler(event, context):
                                                  'Key': orig_video_key,
                                                },
                                                ExpiresIn=3600)
+  logger.info(f"Generated s3 url: {video_url}")
 
   chunk_file_format = f"CHUNK-%d.{extension}"
   chunk_output_format = f"/tmp/chunks/{chunk_file_format}"
