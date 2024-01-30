@@ -13,5 +13,5 @@ fi
 
 cdk synth
 cd cdk.out
-AWS_REGION=eu-central-1 sam local invoke "$FunctionName" --event ../event.json -t ThetaTrimStack.template.json
+AWS_REGION=eu-central-1 sam local invoke "$FunctionName" --event ../event.json -t ThetaTrimStack.template.json --parameter-overrides 'MemorySize=1024'
 cd ..
