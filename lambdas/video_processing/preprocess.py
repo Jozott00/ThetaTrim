@@ -1,14 +1,15 @@
 import json
 import logging
+import multiprocessing
 import time
 
 import boto3
 import os
 import subprocess
-import shlex
-import glob
-import ffmpeg
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from utils import constants
+from utils import utils
 
 JOB_TABLE_NAME = os.environ["JOB_TABLE_NAME"]
 OBJ_BUCKET_NAME = os.environ["OBJECT_BUCKET_NAME"]
@@ -58,12 +59,19 @@ def handler(event, context):
 
   logger.info(f"Start watch and upload...")
 
-  chunks = watch_and_upload("/tmp/chunks", ffmpeg_process, chunk_file_format)
+  chunks = watch_and_upload("/tmp/chunks", ffmpeg_process, chunk_file_format, job_id)
+
+  logger.info("All chunks uploaded.")
+
+  ffmpeg_process.wait()
+
+  if ffmpeg_process.returncode is not 0:
+    raise utils.FFmpegError(f"FFMPEG returned with exitcode {ffmpeg_process.returncode}")
 
   chunks = [{"key": obj_key, "jobId": job_id, "extension": extension, "size": size} for obj_key, size in chunks]
 
   # delete local storage
-  os.system("rm /tmp/*")
+  os.system("rm -rf /tmp/*")
 
   return {
     'jobId': job_id,
@@ -84,37 +92,49 @@ def upload_to_s3(file_path, object_name):
     raise e
 
 
-def watch_and_upload(directory, ffmpeg_process, file_pattern):
+def watch_and_upload(directory, ffmpeg_process, file_pattern, job_id):
   """
   Watches for new chunks in directory and uploads them as soon as possible
 
   :param directory: chunks output directory
   :param ffmpeg_process: async process of ffmpeg
   :param file_pattern: chunk file pattern
-  :return:
+  :return: array of chunks (key, size)
   """
   i = 0
   chunks = []
+  futures = []
 
-  while True:
-    process_done = ffmpeg_process.poll() is not None
-    current_file = os.path.join(directory, file_pattern % i)
-    next_file = os.path.join(directory, file_pattern % (i + 1))
+  with ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() * 5) as executor:
+    while True:
+      process_done = ffmpeg_process.poll() is not None
+      current_file = os.path.join(directory, file_pattern % i)
+      next_file = os.path.join(directory, file_pattern % (i + 1))
 
-    if os.path.exists(current_file):
-      if os.path.exists(next_file) or process_done:
-        chunk_info = upload_to_s3(current_file, os.path.basename(current_file))
-        chunks.append(chunk_info)
-        i += 1
+      if os.path.exists(current_file):
+        if os.path.exists(next_file) or process_done:
+          # we know that file is complete
+          future = executor.submit(upload_to_s3, current_file, f"{job_id}/{os.path.basename(current_file)}")
+          futures.append(future)
+          i += 1
+        else:
+          # file is not yet complete
+          logger.info(f"Sleep inner because of {current_file}")
+          time.sleep(0.25)
+      elif process_done:
+        break
       else:
-        logger.info(f"Sleep inner because of {current_file}")
+        # short timeout
+        logger.info(f"Sleep outer because of {current_file}")
         time.sleep(0.25)
-    elif process_done:
-      break
-    else:
-      # short timeout
-      logger.info(f"Sleep outer because of {current_file}")
-      time.sleep(0.25)
+
+    # Wait for all uploads to complete
+    for future in futures:
+      try:
+        result = future.result()
+        chunks.append(result)
+      except Exception as e:
+        logger.error(f"Error in uploading file {futures[future]}: {e}")
 
   return chunks
 

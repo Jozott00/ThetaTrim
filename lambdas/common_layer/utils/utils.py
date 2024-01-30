@@ -4,3 +4,7 @@ def get_jobid_from_key(key: str):
 
 def get_extension_from_key(key: str):
   return key.rsplit(".")[1]
+
+
+class FFmpegError(Exception):
+  pass

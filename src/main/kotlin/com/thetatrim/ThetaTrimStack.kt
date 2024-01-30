@@ -170,7 +170,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
             .build()
 
         preprocessLambda = lambdaBuilderFactory("lambdas/video_processing/preprocess")
-            .timeout(Duration.seconds(60))
+            .timeout(Duration.minutes(5))
             .memorySize(512)
 //            .ephemeralStorageSize(Size.gibibytes(1))
             .build()
@@ -276,6 +276,7 @@ class ThetaTrimStack @JvmOverloads constructor(scope: Construct?, id: String?, p
         val chunkMap = Map.Builder.create(this, "ChunkMap")
             .itemsPath("$.chunks")
             .resultPath("$.mapOutput")
+            .maxConcurrency(10)
             .build()
             .iterator(processChunkTask)
             .addCatch(handleProcessingErrorTask)
