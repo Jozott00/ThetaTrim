@@ -1,6 +1,8 @@
 import glob
 import json
 import logging
+from typing import Any
+
 import boto3
 import os
 import ffmpeg
@@ -12,6 +14,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3_client = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
+job_table = dynamodb.Table(JOB_TABLE_NAME)
 
 
 def handler(event, context):
@@ -56,6 +60,19 @@ def process_chunk(input_path, output_path):
     .overwrite_output()
     .run()
   )
+
+
+def build_command(config: dict['str', any]) -> Any:
+  pass
+
+
+def get_job_config(job_id: str) -> dict[Any: Any]:
+  return job_table.get_item(
+    Key={
+      'PK': job_id,
+      'SK': "DATA"
+    }
+  )['Item']['transformations']
 
 
 def extract_data(event, context):

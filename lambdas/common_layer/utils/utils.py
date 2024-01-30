@@ -6,5 +6,9 @@ def get_extension_from_key(key: str):
   return key.rsplit(".")[1]
 
 
-class FFmpegError(Exception):
+class ApplicationError(Exception):
+  pass
+
+
+class FFmpegError(ApplicationError):
   pass
