@@ -29,13 +29,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 def delete_chunks(job_id):
-  objects = s3_bucket.objects.filter(Prefix=f"{job_id}/CHUNK-")
+  objects = s3_bucket.objects.filter(Prefix=f"{job_id}/")
 
-  objects_to_delete = [{'Key': o.key} for o in objects if o.key.endswith('.mp4')]
+  objects_to_delete = [{'Key': o.key} for o in objects if
+                       o.key.lower().startswith(f"{job_id}/chunk".lower()) or o.key.lower().startswith(
+                         f"{job_id}/original".lower())]
 
   if len(objects_to_delete):
     s3_client.delete_objects(Bucket=OBJ_BUCKET_NAME, Delete={'Objects': objects_to_delete})
 
 
 def extract_data(event, context):
-  return event['jobId']
+  return event[0]['jobid']

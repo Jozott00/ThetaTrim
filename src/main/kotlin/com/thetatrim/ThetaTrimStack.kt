@@ -267,6 +267,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .build()
             .branch(reduceChunksTask)
             .branch(extractLabelsTask)
+            .addCatch(cleanupTask)
             .next(cleanupTask)
         val processChunkTask = LambdaInvoke.Builder.create(this, "ProcessChunkTask")
             .lambdaFunction(processChunkLambda)
