@@ -1,13 +1,10 @@
-import json
+import boto3
 import logging
 import multiprocessing
-import time
-
-import boto3
 import os
 import subprocess
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
+import time
+from concurrent.futures import ThreadPoolExecutor
 from utils import constants
 from utils import utils
 
@@ -17,8 +14,9 @@ OBJ_BUCKET_NAME = os.environ["OBJECT_BUCKET_NAME"]
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-s3_deliminator = "%3A"
 s3_client = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
+job_table = dynamodb.Table(JOB_TABLE_NAME)
 
 
 def handler(event, context):
@@ -70,6 +68,8 @@ def handler(event, context):
     raise utils.FFmpegError(f"FFMPEG returned with exitcode {ffmpeg_process.returncode}")
 
   chunks = [{"key": obj_key, "jobId": job_id, "extension": extension, "size": size} for obj_key, size in chunks]
+
+  save_to_db(len(chunks), job_id)
 
   # delete local storage
   os.system("rm -rf /tmp/*")
@@ -138,6 +138,20 @@ def watch_and_upload(directory, ffmpeg_process, file_pattern, job_id):
         logger.error(f"Error in uploading file {futures[future]}: {e}")
 
   return chunks
+
+
+def save_to_db(chunks_len, job_id):
+  job_table.update_item(
+    Key={
+      'PK': f"JOB#{job_id}",
+      'SK': "DATA"
+    },
+    UpdateExpression='SET chunks = :val',
+    ExpressionAttributeValues={
+      ':val': {'length': chunks_len, 'items': [{'labels': []}] * chunks_len}
+    },
+    ReturnValues="UPDATED_NEW"
+  )
 
 
 def extract_data(event, context):
