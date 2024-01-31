@@ -2,7 +2,6 @@ import glob
 import logging
 import subprocess
 import tempfile
-import typing
 from typing import Dict, Any
 import os
 
