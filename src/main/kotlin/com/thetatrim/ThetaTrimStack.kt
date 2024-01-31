@@ -1,5 +1,7 @@
 package com.thetatrim
 
+import com.amazonaws.services.servicequotas.AWSServiceQuotasClient
+import com.amazonaws.services.servicequotas.model.GetServiceQuotaRequest
 import software.amazon.awscdk.AssetOptions
 import software.amazon.awscdk.Duration
 import software.amazon.awscdk.Size
@@ -133,13 +135,6 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
      */
     private fun setupResources() {
 
-        jobsBucket = Bucket.Builder.create(this, "JobObjectBucket1")
-            .bucketName("${PREFIX}job-object-bucket-${this.account}") // account suffix to avoid name conflicts
-            .versioned(true)
-            .build()
-
-        environmentMap.put("OBJECT_BUCKET_NAME", jobsBucket.bucketName)
-
         jobsTable = Table.Builder.create(this, "JobsTable")
             .partitionKey(
                 Attribute.builder().name("PK").type(AttributeType.STRING).build()
@@ -148,6 +143,13 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
                 Attribute.builder().name("SK").type(AttributeType.STRING).build()
             )
             .build()
+
+        jobsBucket = Bucket.Builder.create(this, "JobObjectBucket")
+            .bucketName("${PREFIX}job-object-bucket-${this.account}") // account suffix to avoid name conflicts
+            .versioned(true)
+            .build()
+
+        environmentMap.put("OBJECT_BUCKET_NAME", jobsBucket.bucketName)
 
         environmentMap.put("JOB_TABLE_NAME", jobsTable.tableName)
 
@@ -275,10 +277,15 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .lambdaFunction(processChunkLambda)
             .outputPath("$.Payload")
             .build()
+
+        // depending on the account we may use a different maximal concurrency for the map
+        val lambdaConcurrencyQuota = findAccountLambdaConcurrencyQuota()
+        println("Using map max concurrency of $lambdaConcurrencyQuota")
+
         val chunkMap = Map.Builder.create(this, "ChunkMap")
             .itemsPath("$.chunks")
-            .resultPath("$.mapOutput")
-            .maxConcurrency(10)
+            .resultPath("$.processedChunks")
+            .maxConcurrency(lambdaConcurrencyQuota)
             .build()
             .iterator(processChunkTask)
             .addCatch(handleProcessingErrorTask)
@@ -362,6 +369,18 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .code(Code.fromAsset(directoryPath))
             .environment(environmentMap)
             .layers(mutableListOf(utilsLambdaLayer, ffmpegLambdaLayer))
+    }
+
+    private fun findAccountLambdaConcurrencyQuota(): Double {
+        val client = AWSServiceQuotasClient.builder()
+            .build()
+
+        val result = client.getServiceQuota(
+            GetServiceQuotaRequest()
+                .withQuotaCode("L-B99A9384")
+                .withServiceCode("lambda")
+        )
+        return result.quota.value
     }
 
     companion object {

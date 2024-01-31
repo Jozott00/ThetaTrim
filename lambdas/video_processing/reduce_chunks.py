@@ -48,7 +48,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
       logger.info(f"Stored seglist is: {l}")
 
     process = exec_command(f.name, v="info")
-    s3_utils.multipart_upload(process.stdout, "thetatrim-job-object-bucket-1", result_file)
+    s3_utils.multipart_upload(process.stdout, OBJ_BUCKET_NAME, result_file)
 
     return_code = process.wait()
     logger.info(f"FFMPEG returned with code {return_code}")
@@ -112,4 +112,4 @@ def generate_presigned_urls(keys: list[str], expiration=3600) -> list[str]:
 
 
 def extract_data(event, context) -> list[str]:
-  return [e['key'] for e in event['chunks']]
+  return [e['key'] for e in event['processedChunks']]
