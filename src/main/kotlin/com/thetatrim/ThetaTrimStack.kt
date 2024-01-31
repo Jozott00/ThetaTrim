@@ -133,7 +133,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
      */
     private fun setupResources() {
 
-        jobsBucket = Bucket.Builder.create(this, "JobObjectBucket1")
+        jobsBucket = Bucket.Builder.create(this, "JobObjectBucket")
             .bucketName("${PREFIX}job-object-bucket-${this.account}") // account suffix to avoid name conflicts
             .versioned(true)
             .build()
