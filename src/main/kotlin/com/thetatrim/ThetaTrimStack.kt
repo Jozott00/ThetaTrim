@@ -64,6 +64,11 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
     private lateinit var postJobLambda: Function
 
     /**
+     * Lambda function to obtain initial video information
+     */
+    private lateinit var jobProbeLambda: Function
+
+    /**
      * Lambda function for preprocessing uploaded videos.
      */
     private lateinit var preprocessLambda: Function
@@ -214,6 +219,11 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .timeout(Duration.seconds(60))
             .build()
 
+        jobProbeLambda = lambdaBuilderFactory("lambdas/job_probe/job_probe")
+            .timeout(Duration.seconds(10))
+            .memorySize(2048)
+            .build()
+
         preprocessLambda = lambdaBuilderFactory("lambdas/video_processing/preprocess")
             .timeout(Duration.minutes(2))
             .memorySize(2048)
@@ -346,19 +356,31 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .lambdaFunction(extractMetadataLambda)
             .outputPath("$.Payload")
             .build()
+
         val extractAudioTask = LambdaInvoke.Builder.create(this, "ExtractAudioTask")
             .lambdaFunction(extractAudioLambda)
             .outputPath("$.Payload")
             .build()
+            
+        val extractAudioChoice = Choice.Builder.create(this, "ExtractAudioChoice")
+            .build()
+            .`when`(Condition.booleanEquals("$.extractAudio", true), extractAudioTask)
+            .afterwards(AfterwardsOptions.builder().includeOtherwise(true).build())
+            .next(Pass.Builder.create(this, "OtherwiseNothing").build())
         val processingParallel = Parallel.Builder.create(this, "ProcessingParallel")
             .build()
             .branch(extractMetadataTask)
-            .branch(extractAudioTask)
+            .branch(extractAudioChoice)
             .branch(preprocessingTask)
+        val jobProbeTask = LambdaInvoke.Builder.create(this, "JobProbeTask")
+            .lambdaFunction(jobProbeLambda)
+            .outputPath("$.Payload")
+            .build()
+            .next(processingParallel)
         val logGroup = LogGroup.Builder.create(this, "VideoProcessingLogGroup")
             .build()
         return StateMachine.Builder.create(this, "VideoProcessingStateMachine")
-            .definitionBody(DefinitionBody.fromChainable(processingParallel))
+            .definitionBody(DefinitionBody.fromChainable(jobProbeTask))
             .logs(
                 LogOptions.builder().destination(logGroup).level(LogLevel.ALL).build()
             )
@@ -393,11 +415,14 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
      */
     private fun grantPermissions() {
         jobsBucket.grantWrite(postJobLambda)
+        jobsBucket.grantReadWrite(jobProbeLambda)
+        jobsBucket.grantReadWrite(extractAudioLambda)
         jobsBucket.grantReadWrite(preprocessLambda)
         jobsBucket.grantReadWrite(processChunkLambda)
         jobsBucket.grantReadWrite(reduceChunksLambda)
         jobsBucket.grantReadWrite(cleanupLambda)
         jobsTable.grantWriteData(postJobLambda)
+        jobsTable.grantReadWriteData(jobProbeLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
         jobsTable.grantReadWriteData(processChunkLambda)
         jobsTable.grantReadWriteData(reduceChunksLambda)
