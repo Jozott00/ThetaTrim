@@ -89,9 +89,11 @@ def process_ref_image(local_video_path, result_key):
 
 
 def process_chunk(ffmpeg_command):
-  process = subprocess.run(ffmpeg_command)
-  if process.returncode != 0:
-    raise utils.FFmpegError("Failed to process chunk")
+  try:
+    subprocess.run(ffmpeg_command, capture_output=True, text=True, check=True)
+  except subprocess.CalledProcessError as e:
+    logger.error(e.output)
+    raise utils.FFmpegError("Failed to run ffmpeg process", e)
 
 
 def build_command(chunk_url: str, outpath: str, config: config_utils.Config) -> tuple[list[str], str, str]:

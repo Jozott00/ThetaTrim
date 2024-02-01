@@ -274,7 +274,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .build()
 
         benchmarkLambda = lambdaBuilderFactory("lambdas/test_lambda/crop_test")
-            .timeout(Duration.minutes(3))
+            .timeout(Duration.minutes(10))
             .memorySize(2048)
             .build()
 
