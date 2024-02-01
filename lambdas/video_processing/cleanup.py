@@ -1,7 +1,7 @@
-import logging
-from typing import Dict, Any
-import os
 import boto3
+import logging
+import os
+from typing import Dict, Any
 
 JOB_TABLE_NAME = os.environ["JOB_TABLE_NAME"]
 OBJ_BUCKET_NAME = os.environ["OBJECT_BUCKET_NAME"]
@@ -19,13 +19,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   Cleans up the resources that were used by the job (such as chunk videos, database entries, etc.).
   """
 
-  job_id = extract_data(event, context)
+  error, job_id = extract_data(event, context)
 
   delete_chunks(job_id)
 
-  logger.info(f"Success")
-
-  return {}
+  return {
+    'jobId': job_id,
+    'success': error is None
+  }
 
 
 def delete_chunks(job_id):
@@ -40,4 +41,10 @@ def delete_chunks(job_id):
 
 
 def extract_data(event, context):
-  return event[0]['jobid']
+  try:
+    job_id = event[0]['jobId']
+    error = event[0].get('error')
+  except Exception:
+    job_id = event['jobId']
+    error = event.get('error')
+  return error, job_id
