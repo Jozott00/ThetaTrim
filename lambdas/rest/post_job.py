@@ -7,6 +7,8 @@ from botocore.exceptions import ClientError
 from datetime import datetime
 from typing import Dict, Any
 from utils.job_status import JobStatus
+from utils import config_utils
+from utils import utils
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -36,6 +38,14 @@ Handles post job REST API calls.
     return {
       'statusCode': 400,
       'body': json.dumps({'error': 'Invalid request body'})
+    }
+
+  try:
+    config_utils.Config(operations)
+  except utils.ConfigError as e:
+    return {
+      'statusCode': 400,
+      'body': json.dumps({'error': f'{e}'})
     }
 
   store_job_info(db_client, job_id, operations)
