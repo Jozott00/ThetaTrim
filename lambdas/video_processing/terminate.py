@@ -63,7 +63,7 @@ def notify_clients(job_id, video_key, audio_key, error):
     }
   )
   item = item_res.get('Item', None)
-  connections = item['ws_connections']
+  connections = item.get('ws_connections', [])
   if error is None:
     msg = get_success_msg(video_key, audio_key, item['transformations'])
   else:

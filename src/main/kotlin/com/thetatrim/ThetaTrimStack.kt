@@ -111,6 +111,11 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
      */
     private lateinit var cleanupLambda: Function
 
+    /**
+     * Lambda function to benchmark ffmpeg.
+     */
+    private lateinit var benchmarkLambda: Function
+
     /** Lambda function to handle a websocket connection. */
     private lateinit var connectWsLambda: Function
 
@@ -268,6 +273,11 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .timeout(Duration.seconds(60))
             .build()
 
+        benchmarkLambda = lambdaBuilderFactory("lambdas/test_lambda/crop_test")
+            .timeout(Duration.minutes(3))
+            .memorySize(2048)
+            .build()
+
         videoProcessingStateMachine = generateVideoProcessingSateMachine()
 
         environmentMap.put("STATE_MACHINE_ARN", videoProcessingStateMachine.stateMachineArn)
@@ -341,7 +351,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         val mapRefImgsTask = Map.Builder.create(this, "MapRefimgsTask")
             .itemsPath("$.processedChunks")
             .resultPath("$.labeledChunks")
-            .maxConcurrency(lambdaConcurrencyQuota)
+            .maxConcurrency(2)
             .build()
             .itemProcessor(labelDetectTask)
             .next(thumbnailGenerationTask)
@@ -480,6 +490,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         jobsBucket.grantReadWrite(cleanupLambda)
         jobsBucket.grantReadWrite(terminateLambda)
         jobsBucket.grantReadWrite(generateThumbnailLambda)
+        jobsBucket.grantReadWrite(benchmarkLambda)
         jobsTable.grantWriteData(postJobLambda)
         jobsTable.grantReadWriteData(jobProbeLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
