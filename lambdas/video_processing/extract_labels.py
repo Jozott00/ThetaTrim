@@ -22,4 +22,4 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   logger.info(f"Success")
 
   # TODO: output should be input, being the url to the s3 resource
-  return {}
+  return event
