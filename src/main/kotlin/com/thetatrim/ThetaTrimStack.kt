@@ -351,7 +351,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         val mapRefImgsTask = Map.Builder.create(this, "MapRefimgsTask")
             .itemsPath("$.processedChunks")
             .resultPath("$.labeledChunks")
-            .maxConcurrency(2)
+            .maxConcurrency(1)
             .build()
             .itemProcessor(labelDetectTask)
             .next(thumbnailGenerationTask)

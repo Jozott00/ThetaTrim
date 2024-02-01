@@ -1,4 +1,9 @@
 operations:
+  - operation: sepia
+  - operation: brightness
+    opts: 0.3
+  - operation: grayscale
+    opts: 0.3
   - operation: crop
     opts: 500 500
   - operation: format

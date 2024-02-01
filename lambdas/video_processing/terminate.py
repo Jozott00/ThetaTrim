@@ -65,7 +65,7 @@ def notify_clients(job_id, video_key, audio_key, error):
   item = item_res.get('Item', None)
   connections = item.get('ws_connections', [])
   if error is None:
-    msg = get_success_msg(video_key, audio_key, item['transformations'])
+    msg = get_success_msg(video_key, f"{job_id}/THUMBNAIL.jpg", audio_key, item['transformations'])
   else:
     msg = get_error_msg(error)
   for connection_id in connections:
@@ -78,14 +78,20 @@ def notify_clients(job_id, video_key, audio_key, error):
       pass
 
 
-def get_success_msg(video_key, audio_key, transformations):
+def get_success_msg(video_key, thumbnail_key, audio_key, transformations):
   video_url = s3_client.generate_presigned_url('get_object',
                                                Params={
                                                  'Bucket': OBJ_BUCKET_NAME,
                                                  'Key': video_key,
                                                },
                                                ExpiresIn=3600)
-  msg = f"Job succeeded.\nVideo file: {video_url}"
+  thumbnail_url = s3_client.generate_presigned_url('get_object',
+                                                   Params={
+                                                     'Bucket': OBJ_BUCKET_NAME,
+                                                     'Key': thumbnail_key,
+                                                   },
+                                                   ExpiresIn=3600)
+  msg = f"Job succeeded.\nVideo file: {video_url}\nThumbnail file: {thumbnail_url}"
   has_exported_audio = any(item.get('operation') == 'exaudio' for item in transformations)
   if (has_exported_audio):
     audio_url = s3_client.generate_presigned_url('get_object',
