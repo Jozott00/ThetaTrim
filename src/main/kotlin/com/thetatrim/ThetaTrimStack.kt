@@ -203,10 +203,19 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .build()
 
         generateThumbnailLambda = lambdaBuilderFactory("lambdas/video_processing/generate_thumbnail")
-            .timeout(Duration.seconds(60))
-//            .memorySize(1024)
-//            .ephemeralStorageSize(Size.gibibytes(1))
-            .build()
+                .functionName("${PREFIX}generate-thumbnail-handler")
+                .timeout(Duration.seconds(60))
+                .runtime(Runtime.PYTHON_3_11)
+                .handler("generate_thumbnail.handler")
+                .code(Code.fromAsset("lambdas/video_processing"))
+                .environment(
+                        mapOf(
+                                "OBJECT_BUCKET_NAME" to jobsBucket.bucketName,
+                                "JOB_TABLE_NAME" to jobsTable.tableName
+                        )
+                )
+                .layers(mutableListOf(utilsLambdaLayer, ffmpegLambdaLayer))
+                .build()
 
         handleErrorLambda = lambdaBuilderFactory("lambdas/video_processing/handle_error")
             .timeout(Duration.seconds(60))
@@ -351,6 +360,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         jobsBucket.grantReadWrite(processChunkLambda)
         jobsBucket.grantReadWrite(reduceChunksLambda)
         jobsBucket.grantReadWrite(cleanupLambda)
+        jobsBucket.grantReadWrite(generateThumbnailLambda)
         jobsTable.grantWriteData(postJobLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
         jobsTable.grantReadWriteData(processChunkLambda)
