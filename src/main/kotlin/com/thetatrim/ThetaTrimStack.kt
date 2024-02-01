@@ -2,7 +2,6 @@ package com.thetatrim
 
 import com.amazonaws.services.servicequotas.AWSServiceQuotasClient
 import com.amazonaws.services.servicequotas.model.GetServiceQuotaRequest
-import software.amazon.awscdk.AssetOptions
 import software.amazon.awscdk.Duration
 import software.amazon.awscdk.Stack
 import software.amazon.awscdk.StackProps
@@ -287,27 +286,25 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
      * WIP: Generates the reducer step-functions state machine.
      */
     private fun generateVideoProcessingSateMachine(): StateMachine {
-        val pass = Pass.Builder.create(this, "Pass").build()
+        val succeed = Succeed.Builder.create(this, "Pass").build()
+        val fail = Fail.Builder.create(this, "Fail").build()
+
+        val errorChoice = Choice.Builder.create(this, "errorChoice").build()
+            .`when`(Condition.booleanEquals("$.success", false), fail)
+            .otherwise(succeed)
+
         val cleanupTask = LambdaInvoke.Builder.create(this, "CleanupTask")
             .lambdaFunction(cleanupLambda)
             .outputPath("$.Payload")
             .build()
-        val notifySuccess = LambdaInvoke.Builder.create(this, "HandleSuccessTask")
+            .next(errorChoice)
+
+        val terminateTask = LambdaInvoke.Builder.create(this, "TerminateTask")
             .lambdaFunction(terminateLambda)
             .outputPath("$.Payload")
             .build()
-            .addCatch(pass, CatchProps.builder().resultPath("$.error").build())
-        val handleProcessingErrorTask = LambdaInvoke.Builder.create(this, "HandleProcessingErrorTask")
-            .lambdaFunction(terminateLambda)
-            .outputPath("$.Payload")
-            .build()
-            .addCatch(cleanupTask, CatchProps.builder().resultPath("$.error").build())
             .next(cleanupTask)
-        val handleReduceErrorTask = LambdaInvoke.Builder.create(this, "HandleReduceErrorTask")
-            .lambdaFunction(terminateLambda)
-            .outputPath("$.Payload")
-            .build()
-            .addCatch(pass, CatchProps.builder().resultPath("$.error").build())
+
         val thumbnailGenerationTask = LambdaInvoke.Builder.create(this, "ThumbnailGenerationTask")
             .lambdaFunction(generateThumbnailLambda)
             .outputPath("$.Payload")
@@ -321,14 +318,11 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .lambdaFunction(reduceChunksLambda)
             .outputPath("$.Payload")
             .build()
-            .addCatch(handleReduceErrorTask, CatchProps.builder().resultPath("$.error").build())
-            .next(notifySuccess)
         val postProcessingParallel = Parallel.Builder.create(this, "PostProcessingParallel")
             .build()
             .branch(reduceChunksTask)
             .branch(extractLabelsTask)
-            .addCatch(cleanupTask, CatchProps.builder().resultPath("$.error").build())
-            .next(cleanupTask)
+
         val processChunkTask = LambdaInvoke.Builder.create(this, "ProcessChunkTask")
             .lambdaFunction(processChunkLambda)
             .outputPath("$.Payload")
@@ -343,15 +337,14 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .resultPath("$.processedChunks")
             .maxConcurrency(lambdaConcurrencyQuota)
             .build()
-            .iterator(processChunkTask)
-            .addCatch(handleProcessingErrorTask, CatchProps.builder().resultPath("$.error").build())
+            .itemProcessor(processChunkTask)
             .next(postProcessingParallel)
         val preprocessingTask = LambdaInvoke.Builder.create(this, "PreprocessingTask")
             .lambdaFunction(preprocessLambda)
             .outputPath("$.Payload")
             .build()
-            .addCatch(handleProcessingErrorTask, CatchProps.builder().resultPath("$.error").build())
             .next(chunkMap)
+
         val extractMetadataTask = LambdaInvoke.Builder.create(this, "ExtractMetadataTask")
             .lambdaFunction(extractMetadataLambda)
             .outputPath("$.Payload")
@@ -361,24 +354,31 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .lambdaFunction(extractAudioLambda)
             .outputPath("$.Payload")
             .build()
-            
+
         val extractAudioChoice = Choice.Builder.create(this, "ExtractAudioChoice")
             .build()
             .`when`(Condition.booleanEquals("$.extractAudio", true), extractAudioTask)
             .afterwards(AfterwardsOptions.builder().includeOtherwise(true).build())
             .next(Pass.Builder.create(this, "OtherwiseNothing").build())
+
         val processingParallel = Parallel.Builder.create(this, "ProcessingParallel")
             .build()
             .branch(extractMetadataTask)
             .branch(extractAudioChoice)
             .branch(preprocessingTask)
+            .addCatch(terminateTask, CatchProps.builder().resultPath("$.error").build())
+            .next(terminateTask)
+
         val jobProbeTask = LambdaInvoke.Builder.create(this, "JobProbeTask")
             .lambdaFunction(jobProbeLambda)
             .outputPath("$.Payload")
             .build()
+            .addCatch(terminateTask, CatchProps.builder().resultPath("$.error").build())
             .next(processingParallel)
+
         val logGroup = LogGroup.Builder.create(this, "VideoProcessingLogGroup")
             .build()
+
         return StateMachine.Builder.create(this, "VideoProcessingStateMachine")
             .definitionBody(DefinitionBody.fromChainable(jobProbeTask))
             .logs(

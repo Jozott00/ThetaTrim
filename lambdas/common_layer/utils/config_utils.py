@@ -10,10 +10,15 @@ class Config:
 
   def __init__(self, config: list[dict[str, any]]):
     self.valid_formats = ['mp4', 'mov', 'avi']
-    self.filter_operations = ["crop", "resize", "filter"]
+    self.filter_operations = ["crop", "resize", "sepia", "brightness", "grayscale"]
     self.used_filters = set()
 
     for operation in config:
+
+      for key in operation.keys():
+        if key not in ['operation', 'opts']:
+          raise KeyError(f"Invalid key '{key}' in configuration. Valid keys are 'operation' and 'opts'")
+
       op_type = operation.get('operation')
       op_opts = operation.get('opts')
 
@@ -34,15 +39,15 @@ class Config:
       raise utils.ConfigError(f"Duplicate filter operation: '{op_type}'. Each filter operation can only be used once.")
     self.used_filters.add(op_type)
 
-    opts_list = op_opts.split(' ')
     if op_type == 'crop' or op_type == 'resize':
+      opts_list = op_opts.split(' ')
       if len(opts_list) not in [2, 4]:
         raise utils.ConfigError(f"Invalid {op_type} options: {op_opts}")
       opts_dict = dict(zip(['width', 'height', 'x', 'y'][:len(opts_list)], map(int, opts_list)))
-    elif op_type == 'filter':
-      if op_opts not in ['grayscale', 'sepia'] and not op_opts.startswith('brightness='):
-        raise utils.ConfigError(f"Invalid filter {op_opts}")
-      opts_dict = {'filter_type': opts_list[0], 'value': opts_list[1] if len(opts_list) > 1 else None}
+    elif op_type == 'brightness':
+      opts_dict = {'value': float(op_opts)}
+    else:
+      opts_dict = {}
 
     self.filters[op_type] = opts_dict
 
