@@ -118,7 +118,7 @@ def watch_and_upload(directory, ffmpeg_process, file_pattern, job_id):
       if os.path.exists(current_file):
         if os.path.exists(next_file) or process_done:
           # we know that file is complete
-          future = executor.submit(upload_to_s3, current_file, f"{job_id}/{os.path.basename(current_file)}")
+          future = executor.submit(upload_to_s3, current_file, f"{job_id}/CHUNKS/{os.path.basename(current_file)}")
           futures.append(future)
           i += 1
         else:
