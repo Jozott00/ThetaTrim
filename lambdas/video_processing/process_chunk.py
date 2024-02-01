@@ -18,6 +18,20 @@ s3_client = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 job_table = dynamodb.Table(JOB_TABLE_NAME)
 
+def print_directory(dir):
+  contents = os.listdir(dir)
+  print(f"### show {dir} directory")
+  for item in contents:
+    print(item)
+
+
+def process_image_extraction(ffmpeg_command):
+  try:
+    result = subprocess.run(ffmpeg_command, capture_output=True, text=True, check=True)
+    print(result.stdout)
+  except subprocess.CalledProcessError as e:
+    print("Error executing FFmpeg: ", e.output)
+
 
 def handler(event, context):
   """
@@ -49,6 +63,14 @@ def handler(event, context):
 
   key_base_name = os.path.basename(object_key)
   result_key = f"{job_id}/PROCESSED/{key_base_name.rsplit('.')[0]}.{format}"
+  image_ref_key = f"{job_id}/REFERENCE/{key_base_name.rsplit('.')[0]}.jpg"
+  image_temp_path = f"/tmp/{key_base_name.rsplit('.')[0]}.jpg"
+
+  command = ['ffmpeg', '-i', outpath, '-frames:v', '1', image_temp_path]
+  process_image_extraction(command)
+  print_directory('/tmp/')
+  # out-CHUNK-18.mov
+  s3_client.upload_file(image_temp_path, OBJ_BUCKET_NAME, image_ref_key)
 
   logger.info(f"\nReplace {OBJ_BUCKET_NAME}/{object_key} by result...")
   s3_client.upload_file(outpath, OBJ_BUCKET_NAME, result_key)
@@ -64,6 +86,7 @@ def process_chunk(ffmpeg_command):
   process = subprocess.run(ffmpeg_command)
   if process.returncode != 0:
     raise utils.FFmpegError("Failed to process chunk")
+
 
 
 def build_command(chunk_url: str, outpath: str, config: list[dict[str, any]]) -> tuple[list[str], str, str]:

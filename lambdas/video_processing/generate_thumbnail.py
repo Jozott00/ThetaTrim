@@ -39,6 +39,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   thumbnail_name = 'thumbnail.jpg'
   thumbnail_path = f'/tmp/{thumbnail_name}'
 
+  print_directory('/tmp/')
+
   s3_client.download_file(bucket_name, key, video_path)
 
   command = ['ffmpeg', '-i', video_path, '-ss', '00:00:10', '-frames:v', '1', thumbnail_path]
