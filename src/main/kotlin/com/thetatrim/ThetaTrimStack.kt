@@ -60,6 +60,11 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
     private lateinit var postJobLambda: Function
 
     /**
+     * Lambda function to obtain initial video information
+     */
+    private lateinit var jobProbeLambda: Function
+
+    /**
      * Lambda function for preprocessing uploaded videos.
      */
     private lateinit var preprocessLambda: Function
@@ -169,6 +174,11 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
 
         postJobLambda = lambdaBuilderFactory("lambdas/rest/post_job")
             .timeout(Duration.seconds(60))
+            .build()
+
+        jobProbeLambda = lambdaBuilderFactory("lambdas/job_probe/job_probe")
+            .timeout(Duration.seconds(10))
+            .memorySize(2048)
             .build()
 
         preprocessLambda = lambdaBuilderFactory("lambdas/video_processing/preprocess")
@@ -309,10 +319,15 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .branch(extractMetadataTask)
             .branch(extractAudioTask)
             .branch(preprocessingTask)
+        val jobProbeTask = LambdaInvoke.Builder.create(this, "JobProbeTask")
+            .lambdaFunction(jobProbeLambda)
+            .outputPath("$.Payload")
+            .build()
+            .next(processingParallel)
         val logGroup = LogGroup.Builder.create(this, "VideoProcessingLogGroup")
             .build()
         return StateMachine.Builder.create(this, "VideoProcessingStateMachine")
-            .definitionBody(DefinitionBody.fromChainable(processingParallel))
+            .definitionBody(DefinitionBody.fromChainable(jobProbeTask))
             .logs(
                 LogOptions.builder().destination(logGroup).level(LogLevel.ALL).build()
             )
@@ -347,11 +362,13 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
      */
     private fun grantPermissions() {
         jobsBucket.grantWrite(postJobLambda)
+        jobsBucket.grantReadWrite(jobProbeLambda)
         jobsBucket.grantReadWrite(preprocessLambda)
         jobsBucket.grantReadWrite(processChunkLambda)
         jobsBucket.grantReadWrite(reduceChunksLambda)
         jobsBucket.grantReadWrite(cleanupLambda)
         jobsTable.grantWriteData(postJobLambda)
+        jobsTable.grantReadWriteData(jobProbeLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
         jobsTable.grantReadWriteData(processChunkLambda)
         jobsTable.grantReadWriteData(reduceChunksLambda)

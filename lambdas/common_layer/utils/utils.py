@@ -16,3 +16,6 @@ class FFmpegError(ApplicationError):
 
 class ConfigError(ApplicationError):
   pass
+
+class InputSourceError(ApplicationError):
+  pass
