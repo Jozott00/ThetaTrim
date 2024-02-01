@@ -48,7 +48,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
       l = tmpf.read()
       logger.info(f"Stored seglist is: {l}")
 
-    process = exec_command(f.name, v="info")
+    process = exec_command(f.name, ext, v="info")
     s3_utils.multipart_upload(process.stdout, OBJ_BUCKET_NAME, result_file)
 
     return_code = process.wait()
@@ -85,7 +85,7 @@ def download_chunks(keys: list[str]) -> list[str]:
   return dests
 
 
-def exec_command(seglist_file: str, v="info") -> subprocess.Popen:
+def exec_command(seglist_file: str, ext: str, v="info") -> subprocess.Popen:
   command = ["ffmpeg"]
   command.append("-y")
   command.append(f"-v {v}")
@@ -94,7 +94,7 @@ def exec_command(seglist_file: str, v="info") -> subprocess.Popen:
   command.append("-safe 0")  # required for http sources
   command.append(f'-i {seglist_file}')  # concat file list
   command.append("-c copy")
-  command.append("-f mp4")  # todo: make format agnostic
+  command.append(f"-f {ext}")
   command.append("-movflags frag_keyframe+empty_moov")  # todo: only required for mov like containers
   command.append("pipe:1")
 
