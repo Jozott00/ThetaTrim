@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 from typing import Dict, Any
 import os
+from utils.job_status import JobStatus
 
 import boto3
 from utils import s3_utils
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3_client = boto3.client('s3')
+job_table = boto3.resource('dynamodb').Table(JOB_TABLE_NAME)
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -53,6 +55,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info(f"FFMPEG returned with code {return_code}")
     if return_code != 0:
       raise "FFMPEG exited not successful!"
+
+  update_status(jobid)
 
   logger.info(f"Success")
 
@@ -108,6 +112,23 @@ def generate_presigned_urls(keys: list[str], expiration=3600) -> list[str]:
                                            ExpiresIn=expiration)
           for key in keys
           ]
+
+
+def update_status(job_id):
+  job_table.update_item(
+    Key={
+      'PK': f"JOB#{job_id}",
+      'SK': "DATA"
+    },
+    UpdateExpression='SET #status = :val',
+    ExpressionAttributeValues={
+      ':val': JobStatus.COMPLETED.value
+    },
+    ExpressionAttributeNames={
+      '#status': 'status'
+    },
+    ReturnValues="UPDATED_NEW"
+  )
 
 
 def extract_data(event, context) -> list[str]:

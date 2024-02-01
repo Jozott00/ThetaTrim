@@ -1,15 +1,13 @@
-import json
+import boto3
 import logging
 import multiprocessing
-import time
-
-import boto3
 import os
 import subprocess
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
+import time
+from concurrent.futures import ThreadPoolExecutor
 from utils import constants
 from utils import utils
+from utils.job_status import JobStatus
 
 JOB_TABLE_NAME = os.environ["JOB_TABLE_NAME"]
 OBJ_BUCKET_NAME = os.environ["OBJECT_BUCKET_NAME"]
@@ -17,8 +15,9 @@ OBJ_BUCKET_NAME = os.environ["OBJECT_BUCKET_NAME"]
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-s3_deliminator = "%3A"
 s3_client = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
+job_table = dynamodb.Table(JOB_TABLE_NAME)
 
 
 def handler(event, context):
@@ -30,6 +29,8 @@ def handler(event, context):
   logger.info(f"Invoked with event: {event}")
 
   job_id, orig_video_key, extension = extract_data(event, context)
+
+  update_status_in_db(job_id)
 
   # delete local storage
   os.system("rm -rf /tmp/*")
@@ -70,6 +71,8 @@ def handler(event, context):
     raise utils.FFmpegError(f"FFMPEG returned with exitcode {ffmpeg_process.returncode}")
 
   chunks = [{"key": obj_key, "jobId": job_id, "extension": extension, "size": size} for obj_key, size in chunks]
+
+  save_chunks_to_db(len(chunks), job_id)
 
   # delete local storage
   os.system("rm -rf /tmp/*")
@@ -138,6 +141,38 @@ def watch_and_upload(directory, ffmpeg_process, file_pattern, job_id):
         logger.error(f"Error in uploading file {futures[future]}: {e}")
 
   return chunks
+
+
+def update_status_in_db(job_id):
+  job_table.update_item(
+    Key={
+      'PK': f"JOB#{job_id}",
+      'SK': "DATA"
+    },
+    UpdateExpression='SET #status = :val',
+    ExpressionAttributeValues={
+      ':val': JobStatus.RUNNING.value
+    },
+    ExpressionAttributeNames={
+      '#status': 'status'
+    },
+    ReturnValues="UPDATED_NEW"
+  )
+
+
+def save_chunks_to_db(chunks_len, job_id):
+  # update status to "processing"?
+  job_table.update_item(
+    Key={
+      'PK': f"JOB#{job_id}",
+      'SK': "DATA"
+    },
+    UpdateExpression='SET chunks = :val',
+    ExpressionAttributeValues={
+      ':val': {'length': chunks_len, 'items': [{'labels': []}] * chunks_len}
+    },
+    ReturnValues="UPDATED_NEW"
+  )
 
 
 def extract_data(event, context):

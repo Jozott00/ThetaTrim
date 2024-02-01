@@ -4,7 +4,6 @@ import com.amazonaws.services.servicequotas.AWSServiceQuotasClient
 import com.amazonaws.services.servicequotas.model.GetServiceQuotaRequest
 import software.amazon.awscdk.AssetOptions
 import software.amazon.awscdk.Duration
-import software.amazon.awscdk.Size
 import software.amazon.awscdk.Stack
 import software.amazon.awscdk.StackProps
 import software.amazon.awscdk.services.apigateway.LambdaIntegration
@@ -272,6 +271,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .build()
             .branch(reduceChunksTask)
             .branch(extractLabelsTask)
+            .addCatch(cleanupTask)
             .next(cleanupTask)
         val processChunkTask = LambdaInvoke.Builder.create(this, "ProcessChunkTask")
             .lambdaFunction(processChunkLambda)
@@ -350,9 +350,13 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         jobsBucket.grantReadWrite(preprocessLambda)
         jobsBucket.grantReadWrite(processChunkLambda)
         jobsBucket.grantReadWrite(reduceChunksLambda)
+        jobsBucket.grantReadWrite(cleanupLambda)
         jobsTable.grantWriteData(postJobLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
         jobsTable.grantReadWriteData(processChunkLambda)
+        jobsTable.grantReadWriteData(reduceChunksLambda)
+        jobsTable.grantReadWriteData(cleanupLambda)
+        jobsTable.grantReadWriteData(handleErrorLambda)
     }
 
     /**
