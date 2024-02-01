@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import threading
 from typing import Any
 
 import boto3
@@ -49,16 +50,42 @@ def handler(event, context):
   process_chunk(ffmpeg_command)
 
   key_base_name = os.path.basename(object_key)
-  result_key = f"{job_id}/PROCESSED/{key_base_name.rsplit('.')[0]}.{format}"
+  key_base_name_no_format = key_base_name.rsplit('.')[0]
+  result_key = f"{job_id}/PROCESSED/{key_base_name_no_format}.{format}"
+
+  # create reference image for chunk
+  refimg_key = f"{job_id}/REFIMGS/{key_base_name_no_format}.jpg"
+  refimg_thread = threading.Thread(target=process_ref_image, args=(outpath, refimg_key))
+  refimg_thread.start()
 
   logger.info(f"\nReplace {OBJ_BUCKET_NAME}/{object_key} by result...")
   s3_client.upload_file(outpath, OBJ_BUCKET_NAME, result_key)
   logger.info("Done.")
 
+  refimg_thread.join()
+  logger.info("RefImage terminated.")
+
   os.system("rm /tmp/*")
 
   event['key'] = result_key
+  event['refimg_key'] = refimg_key
   return event
+
+
+def process_ref_image(local_video_path, result_key):
+  logger.info("Start ref image generation...")
+  ref_image_outpath = '/tmp/refimg.jpg'
+  command = ['ffmpeg', '-i', local_video_path, '-vframes', '1', ref_image_outpath]
+
+  try:
+    subprocess.run(command, capture_output=True, text=True, check=True)
+  except subprocess.CalledProcessError as e:
+    logger.error(e.output)
+    raise utils.FFmpegError("Failed to create reference image", e)
+
+  logger.info(f"Upload refimage to {result_key}...")
+  s3_client.upload_file(ref_image_outpath, OBJ_BUCKET_NAME, result_key)
+  logger.info(f"Regimage uploaded.")
 
 
 def process_chunk(ffmpeg_command):

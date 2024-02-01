@@ -15,6 +15,7 @@ import software.amazon.awscdk.services.apigatewayv2.WebSocketStage
 import software.amazon.awscdk.services.dynamodb.Attribute
 import software.amazon.awscdk.services.dynamodb.AttributeType
 import software.amazon.awscdk.services.dynamodb.Table
+import software.amazon.awscdk.services.iam.*
 import software.amazon.awscdk.services.lambda.Code
 import software.amazon.awscdk.services.lambda.Function
 import software.amazon.awscdk.services.lambda.LayerVersion
@@ -27,11 +28,13 @@ import software.amazon.awscdk.services.s3.NotificationKeyFilter
 import software.amazon.awscdk.services.s3.notifications.LambdaDestination
 import software.amazon.awscdk.services.stepfunctions.*
 import software.amazon.awscdk.services.stepfunctions.Map
+import software.amazon.awscdk.services.stepfunctions.tasks.CallAwsService
 import software.amazon.awscdk.services.stepfunctions.tasks.LambdaInvoke
 import software.constructs.Construct
 import java.util.*
 import kotlin.collections.hashMapOf
 import kotlin.collections.joinToString
+import kotlin.collections.listOf
 import kotlin.collections.mutableListOf
 
 /** Converts a String from snake_case to PascalCase. */
@@ -92,11 +95,6 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
      * Lambda function to check the jobs status and whether all chunks are processed.
      */
     private lateinit var reduceChunksLambda: Function
-
-    /**
-     * Lambda function for extracting the content-labels of a video chunk.
-     */
-    private lateinit var extractLabelsLambda: Function
 
     /**
      * Lambda function to generate a thumbnail.
@@ -246,7 +244,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .build()
 
         extractAudioLambda = lambdaBuilderFactory("lambdas/video_processing/extract_audio")
-            .timeout(Duration.seconds(60))
+            .timeout(Duration.minutes(2))
             .build()
 
         reduceChunksLambda = lambdaBuilderFactory("lambdas/video_processing/reduce_chunks")
@@ -254,10 +252,6 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .memorySize(2048)
 //            .memorySize(1024)
 //            .ephemeralStorageSize(Size.gibibytes(1))
-            .build()
-
-        extractLabelsLambda = lambdaBuilderFactory("lambdas/video_processing/extract_labels")
-            .timeout(Duration.seconds(60))
             .build()
 
         generateThumbnailLambda = lambdaBuilderFactory("lambdas/video_processing/generate_thumbnail")
@@ -315,11 +309,44 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .lambdaFunction(generateThumbnailLambda)
             .outputPath("$.Payload")
             .build()
-        val extractLabelsTask = LambdaInvoke.Builder.create(this, "ExtractLabelsTask")
-            .lambdaFunction(extractLabelsLambda)
-            .outputPath("$.Payload")
+
+        // depending on the account we may use a different maximal concurrency for the map
+        val lambdaConcurrencyQuota = findAccountLambdaConcurrencyQuota()
+        println("Using map max concurrency of $lambdaConcurrencyQuota")
+        // Create an IAM Policy Statement
+        val labelDetectTask = CallAwsService.Builder.create(this, "DetectLabelsTask")
+            .action("detectLabels")
+            .service("Rekognition")
+            .parameters(
+                mutableMapOf(
+                    "Image" to mutableMapOf(
+                        "S3Object" to mutableMapOf(
+                            "Bucket" to jobsBucket.bucketName,
+                            "Name" to JsonPath.stringAt("$.refimg_key")
+                        )
+                    ),
+                    "MaxLabels" to 10,
+                    "MinConfidence" to 90,
+                    "Features" to mutableListOf("GENERAL_LABELS"),
+                    "Settings" to mutableMapOf(
+                        "GeneralLabels" to mutableMapOf(
+                            "LabelCategoryInclusionFilters" to listOf("Person Description")
+                        )
+                    )
+                )
+            )
+            .iamResources(listOf(jobsBucket.arnForObjects("*")))
             .build()
+
+        val mapRefImgsTask = Map.Builder.create(this, "MapRefimgsTask")
+            .itemsPath("$.processedChunks")
+            .resultPath("$.labeledChunks")
+            .maxConcurrency(lambdaConcurrencyQuota)
+            .build()
+            .itemProcessor(labelDetectTask)
             .next(thumbnailGenerationTask)
+
+
         val reduceChunksTask = LambdaInvoke.Builder.create(this, "ReduceChunksTask")
             .lambdaFunction(reduceChunksLambda)
             .outputPath("$.Payload")
@@ -327,16 +354,14 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         val postProcessingParallel = Parallel.Builder.create(this, "PostProcessingParallel")
             .build()
             .branch(reduceChunksTask)
-            .branch(extractLabelsTask)
+            .branch(mapRefImgsTask)
+
 
         val processChunkTask = LambdaInvoke.Builder.create(this, "ProcessChunkTask")
             .lambdaFunction(processChunkLambda)
             .outputPath("$.Payload")
             .build()
 
-        // depending on the account we may use a different maximal concurrency for the map
-        val lambdaConcurrencyQuota = findAccountLambdaConcurrencyQuota()
-        println("Using map max concurrency of $lambdaConcurrencyQuota")
 
         val chunkMap = Map.Builder.create(this, "ChunkMap")
             .itemsPath("$.chunks")
@@ -385,12 +410,38 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         val logGroup = LogGroup.Builder.create(this, "VideoProcessingLogGroup")
             .build()
 
-        return StateMachine.Builder.create(this, "VideoProcessingStateMachine")
+        // Create IAM Role for Step Function
+        val role = Role.Builder.create(this, "VideoProcessingStepFuncRole")
+            .assumedBy(ServicePrincipal.Builder.create("states.amazonaws.com").build())
+            .inlinePolicies(
+                Collections.singletonMap(
+                    "DetectLabelsPolicy",
+                    PolicyDocument.Builder.create()
+                        .statements(
+                            listOf(
+                                PolicyStatement.Builder.create()
+                                    .resources(listOf("*"))
+                                    .actions(listOf("rekognition:DetectLabels"))
+                                    .build()
+                            )
+                        )
+                        .build()
+                )
+            )
+            .build()
+
+        val statemachine = StateMachine.Builder.create(this, "VideoProcessingStateMachine")
             .definitionBody(DefinitionBody.fromChainable(jobProbeTask))
             .logs(
                 LogOptions.builder().destination(logGroup).level(LogLevel.ALL).build()
             )
+            .role(role)
             .build()
+
+        jobsBucket.grantReadWrite(statemachine)
+
+
+        return statemachine
     }
 
     /**
@@ -428,6 +479,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         jobsBucket.grantReadWrite(reduceChunksLambda)
         jobsBucket.grantReadWrite(cleanupLambda)
         jobsBucket.grantReadWrite(terminateLambda)
+        jobsBucket.grantReadWrite(generateThumbnailLambda)
         jobsTable.grantWriteData(postJobLambda)
         jobsTable.grantReadWriteData(jobProbeLambda)
         jobsTable.grantReadWriteData(preprocessLambda)

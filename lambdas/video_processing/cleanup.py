@@ -33,8 +33,10 @@ def delete_chunks(job_id):
   objects = s3_bucket.objects.filter(Prefix=f"{job_id}/")
 
   objects_to_delete = [{'Key': o.key} for o in objects if
-                       o.key.lower().startswith(f"{job_id}/chunks".lower()) or o.key.lower().startswith(
-                         f"{job_id}/processed".lower())]
+                       o.key.lower().startswith(f"{job_id}/chunks".lower())
+                       or o.key.lower().startswith(f"{job_id}/processed".lower())
+                       or o.key.lower().startswith(f"{job_id}/refimgs".lower())
+                       ]
 
   if len(objects_to_delete):
     s3_client.delete_objects(Bucket=OBJ_BUCKET_NAME, Delete={'Objects': objects_to_delete})
