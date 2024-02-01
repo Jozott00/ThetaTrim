@@ -44,7 +44,7 @@ Handles post job REST API calls.
 
   return {
     'statusCode': 200,
-    'body': json.dumps({'url': presigned_url})
+    'body': json.dumps({'url': presigned_url, 'jobId': job_id})
   }
 
 
