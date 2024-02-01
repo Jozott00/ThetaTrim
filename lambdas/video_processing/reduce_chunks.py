@@ -63,7 +63,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   os.system('rm /tmp/*')
 
   return {
-    "objectUrl": result_file,
+    "key": result_file,
     "jobId": jobid,
     "ext": ext,
   }

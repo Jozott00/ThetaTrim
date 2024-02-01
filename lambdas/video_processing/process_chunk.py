@@ -7,6 +7,7 @@ import os
 import ffmpeg
 
 from utils import utils
+from utils import config_utils
 
 JOB_TABLE_NAME = os.environ["JOB_TABLE_NAME"]
 OBJ_BUCKET_NAME = os.environ["OBJECT_BUCKET_NAME"]
@@ -39,9 +40,9 @@ def handler(event, context):
                                                },
                                                ExpiresIn=3600)
 
-  configs = get_job_config(job_id)
-  logger.info(f"Loading config {configs}")
-  ffmpeg_command, outpath, format = build_command(chunk_url, local_out_path, configs)
+  config = config_utils.get_job_config(job_table, job_id)
+  logger.info(f"Loading config {config}")
+  ffmpeg_command, outpath, format = build_command(chunk_url, local_out_path, config)
   logger.info(f"Executing command: \n{ffmpeg_command}")
 
   logger.info(f"Start chunk processing...")
@@ -66,23 +67,24 @@ def process_chunk(ffmpeg_command):
     raise utils.FFmpegError("Failed to process chunk")
 
 
-def build_command(chunk_url: str, outpath: str, config: list[dict[str, any]]) -> tuple[list[str], str, str]:
+def build_command(chunk_url: str, outpath: str, config: config_utils.Config) -> tuple[list[str], str, str]:
   # TODO: filters must be within a single -vf flag!
   cmd = ["ffmpeg", "-i", chunk_url]
   out_no_format, format_ = outpath.rsplit(".", 1)
 
-  config, vf_args = create_vf_args(config)
+  vf_args = create_vf_args(config)
   cmd.append("-vf")
   cmd.append(",".join(vf_args))
 
-  config, format_ = create_format_arg(format_, config)
+  if config.format:
+    format_ = config.format
   outpath = f"{out_no_format}.{format_}"
   cmd.append(outpath)
 
   return cmd, outpath, format_
 
 
-def create_vf_args(config: list[dict[str, any]]) -> tuple[list[dict[str, any]], list[str]]:
+def create_vf_args(config: config_utils.Config) -> list[str]:
   """
   Creates a list of all arguments that are part of the -vf option.
   It searches for filter operations in the provided config
@@ -90,33 +92,21 @@ def create_vf_args(config: list[dict[str, any]]) -> tuple[list[dict[str, any]], 
   :param config: User defined configs
   :return: all configs that were not used (as they are no filters) and a list of arguments to the -vf option
   """
-  filter_operations = ["crop", "resize", "filter"]
-  used_filters = set()
-  unused_configs = []
+
   filter_args = []
+  for filter, opts in config.filters.items():
+    if filter == 'crop':
+      filter_args.append(create_crop_arg(opts))
+    elif filter == 'resize':
+      filter_args.append(create_resize_arg(opts))
+    elif filter == 'brightness':
+      filter_args.append(f"eq=brightness={opts['value']}")
+    elif filter == 'grayscale':
+      filter_args.append(f"hue=s=0")
+    elif filter == 'sepia':
+      filter_args.append(f"colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131")
 
-  for operation in config:
-    op_type = operation.get('operation')
-    op_opts = operation.get('opts')
-
-    if op_type in filter_operations:
-      if op_type in used_filters:
-        raise utils.ConfigError(
-          f"Duplicate filter operation: '{op_type}'. Each filter operation can only be used once.")
-      used_filters.add(op_type)
-      try:
-        if op_type == 'crop':
-          filter_args.append(create_crop_arg(op_opts))
-        elif op_type == 'resize':
-          filter_args.append(create_resize_arg(op_opts))
-        elif op_type == 'filter':
-          filter_args.append(create_filter_arg(op_opts))
-      except ValueError as e:
-        raise utils.ConfigError(f"Invalid {op_type} options: {op_opts}", e)
-    else:
-      unused_configs.append(operation)
-
-  return unused_configs, filter_args
+  return filter_args
 
 
 def create_filter_arg(opts):
@@ -131,48 +121,17 @@ def create_filter_arg(opts):
     raise utils.ConfigError(f"Invalid filter {opts}")
 
 
-def create_format_arg(default_format: str, config: list[dict[str, any]]) -> tuple[list[dict[str, any]], str]:
-  formats = []
-  remaining_configs = []
-
-  for item in config:
-    if item.get('operation') == 'format':
-      formats.append(item)
-    else:
-      remaining_configs.append(item)
-
-  if len(formats) > 1:
-    raise utils.ConfigError(f"Only one output format can be set. You submitted: {formats}")
-
-  if len(formats) == 0:
-    return remaining_configs, default_format
-
-  format = formats[0].get('opts').strip()
-  valid_formats = ['mp4', 'mov', 'avi']
-  if format in valid_formats:
-    return remaining_configs, format
-  else:
-    raise utils.ConfigError(f"Configured format {format} is none of the valid formats: {valid_formats}")
-
-
 def create_crop_arg(opts):
-  op_opts = opts.split(' ')
-  if len(op_opts) == 2:
-    width, height = map(int, op_opts)
-    x = '(in_w-out_w)/2'
-    y = '(in_h-out_h)/2'
-  elif len(op_opts) == 4:
-    width, height, x, y = map(int, op_opts)
-  else:
-    raise utils.ConfigError(f"Invalid crop options: {opts}")
+  width = opts['width']
+  height = opts['height']
+  x = opts.get('x', '(in_w-out_w)/2')
+  y = opts.get('x', '(in_w-out_w)/2')
   return f'crop={width}:{height}:{x}:{y}'
 
 
 def create_resize_arg(opts):
-  op_opts = opts.split(' ')
-  if len(op_opts) != 2:
-    raise utils.ConfigError(f"Invalid crop options: {opts}")
-  width, height = map(int, op_opts)
+  width = opts['width']
+  height = opts['height']
   return f'scale={width}:{height}'
 
 
