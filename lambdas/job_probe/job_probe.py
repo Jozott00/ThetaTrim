@@ -33,8 +33,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
   config = config_utils.get_job_config(job_table, job_id)
 
-  acodec = get_audio_codec(video_url)
-  event["acodec"] = acodec
+  event["extractAudio"] = False
+  if config.extract_audio:
+    acodec = get_audio_codec(video_url)
+    event["acodec"] = acodec
+    event["extractAudio"] = True
 
   video_info = get_video_details(video_url)
   event.update(video_info)

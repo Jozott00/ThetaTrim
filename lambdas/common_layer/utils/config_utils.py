@@ -4,15 +4,14 @@ from utils import utils
 
 
 class Config:
-  format: None | str
-  filters: dict[str: dict[str: any]]
+  format: None | str = None
+  filters: dict[str: dict[str: any]] = {}
+  extract_audio: bool = False
 
   def __init__(self, config: list[dict[str, any]]):
     self.valid_formats = ['mp4', 'mov', 'avi']
     self.filter_operations = ["crop", "resize", "filter"]
     self.used_filters = set()
-    self.format = None
-    self.filters = {}
 
     for operation in config:
       op_type = operation.get('operation')
@@ -23,6 +22,8 @@ class Config:
           self._check_filters(op_type, op_opts)
         elif op_type == 'format':
           self._check_format(op_opts)
+        elif op_type == 'exaudio':
+          self.extract_audio = True
         else:
           raise utils.ConfigError(f"Unsupported operation: '{op_type}'")
       except ValueError as e:
