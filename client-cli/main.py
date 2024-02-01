@@ -7,9 +7,15 @@ from websockets.sync.client import connect
 import json
 
 load_dotenv()
+rest_endpoint = os.getenv("REST_ENDPOINT")
+ws_endpoint = os.getenv("WS_ENDPOINT")
 
 
 def parse_arguments():
+  if rest_endpoint is None:
+    raise Exception("Please define a rest-api endpoint REST_ENDPOINT in your .env file.")
+  if ws_endpoint is None:
+    raise Exception("Please define a websockets-api endpoint WS_ENDPOINT in your .env file.")
   parser = argparse.ArgumentParser(description="Upload video and perform operations on it.")
   parser.add_argument("config", help="Path to the config.yaml file")
   parser.add_argument("video", help="Path to the video file")
@@ -22,30 +28,34 @@ def read_config(config_path):
 
 
 def post_job(config):
-  endpoint_url = os.getenv("REST_ENDPOINT")
   print("Creating job…")
-  response = requests.post(f"{endpoint_url}/jobs", json=config)
-  response.raise_for_status()
+  try:
+    response = requests.post(f"{rest_endpoint}/jobs", json=config)
+    response.raise_for_status()
+  except:
+    raise Exception("Creating job failed.")
   return response.json()["jobId"], response.json()["url"]
 
 
 def upload_to_s3(upload_url, video_path):
   print("Uploading video…")
-  with open(video_path, 'rb') as file:
-    files = {'file': (video_path, file)}
-    response = requests.put(upload_url, files=files)
-    response.raise_for_status()
-    if response.status_code == 200:
-      print("Upload successful.")
-    else:
-      print(f"Failed to upload. Status code: {response.status_code}")
+  try:
+    with open(video_path, 'rb') as file:
+      response = requests.put(upload_url + 123, data=file)
+      response.raise_for_status()
+      if response.status_code == 200:
+        print("Upload successful.")
+      else:
+        print(f"Failed to upload. Status code: {response.status_code}")
+  except:
+    raise Exception("Upload failed.")
 
 
 def listen_for_result(job_id):
   print("Processing video…")
-  headers = [("jobId", job_id)]
   try:
-    with connect(os.getenv("WS_ENDPOINT"), additional_headers=headers) as websocket:
+    headers = [("jobId", job_id)]
+    with connect(ws_endpoint, additional_headers=headers) as websocket:
       data = json.loads(websocket.recv())
       print(data['msg'])
   except:
@@ -53,11 +63,14 @@ def listen_for_result(job_id):
 
 
 def main():
-  args = parse_arguments()
-  config = read_config(args.config)
-  job_id, upload_url = post_job(config)
-  upload_to_s3(upload_url, args.video)
-  listen_for_result(job_id)
+  try:
+    args = parse_arguments()
+    config = read_config(args.config)
+    job_id, upload_url = post_job(config)
+    upload_to_s3(upload_url, args.video)
+    listen_for_result(job_id)
+  except Exception as e:
+    print(e)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ package com.thetatrim
 
 import com.amazonaws.services.servicequotas.AWSServiceQuotasClient
 import com.amazonaws.services.servicequotas.model.GetServiceQuotaRequest
-import software.amazon.awscdk.AssetOptions
+import software.amazon.awscdk.CfnOutput
 import software.amazon.awscdk.Duration
 import software.amazon.awscdk.Stack
 import software.amazon.awscdk.StackProps
@@ -200,6 +200,11 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
                     WebSocketLambdaIntegration("DisconnectIntegration", disconnectWsLambda)
                 ).build()
             )
+            .build()
+
+        CfnOutput.Builder.create(this, "WebSocketApiEndpoint")
+            .description("The URL of the WebSocket API")
+            .value(websocketApi.apiEndpoint)
             .build()
 
         val webSocketStage = WebSocketStage.Builder.create(this, "WebSocketApiDevStage")
