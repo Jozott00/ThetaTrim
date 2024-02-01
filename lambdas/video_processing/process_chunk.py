@@ -75,7 +75,7 @@ def build_command(chunk_url: str, outpath: str, config: list[dict[str, any]]) ->
 
   config, vf_args = create_vf_args(config)
   cmd.append("-vf")
-  cmd.extend(vf_args)
+  cmd.append(",".join(vf_args))
 
   config, format_ = create_format_arg(format_, config)
   outpath = f"{out_no_format}.{format_}"
@@ -149,8 +149,8 @@ def create_format_arg(default_format: str, config: list[dict[str, any]]) -> tupl
   if len(formats) == 0:
     return remaining_configs, default_format
 
-  format = formats.get('opts').strip()
-  valid_formats = ['mp4', 'm4p', 'm4v', 'mov', 'avi']
+  format = formats[0].get('opts').strip()
+  valid_formats = ['mp4', 'mov', 'avi']
   if format in valid_formats:
     return remaining_configs, format
   else:
@@ -161,7 +161,8 @@ def create_crop_arg(opts):
   op_opts = opts.split(' ')
   if len(op_opts) == 2:
     width, height = map(int, op_opts)
-    x = y = 0
+    x = '(in_w-out_w)/2'
+    y = '(in_h-out_h)/2'
   elif len(op_opts) == 4:
     width, height, x, y = map(int, op_opts)
   else:
