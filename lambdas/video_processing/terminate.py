@@ -66,9 +66,7 @@ def notify_clients(job_id, object_url, error):
   )
   item = item_res.get('Item', None)
   connections = item['ws_connections']
-  logger.info("get msg")
-  msg = get_success_msg(object_url) if error is None else get_error_msg(error)
-  logger.info(f"msg: {msg}")
+  msg = get_success_msg(object_url, item['transformations']) if error is None else get_error_msg(error)
   for connection_id in connections:
     try:
       websocket_client.post_to_connection(
@@ -79,14 +77,24 @@ def notify_clients(job_id, object_url, error):
       pass
 
 
-def get_success_msg(object_url):
+def get_success_msg(object_url, transformations):
   video_url = s3_client.generate_presigned_url('get_object',
                                                Params={
                                                  'Bucket': OBJ_BUCKET_NAME,
                                                  'Key': object_url,
                                                },
                                                ExpiresIn=3600)
-  return f"Job succeeded.\nProcessed file: {video_url}"
+  msg = f"Job succeeded.\nProcessed file: {video_url}"
+  '''has_exported_audio = any(item.get('operation') == 'exaudio' for item in transformations)
+  if (has_exported_audio):
+    audio_url = s3_client.generate_presigned_url('get_object',
+                                                 Params={
+                                                   'Bucket': OBJ_BUCKET_NAME,
+                                                   'Key': object_url,
+                                                 },
+                                                 ExpiresIn=3600)
+    msg += f"\nAudio file: {audio_url}"'''
+  return msg
 
 
 def get_error_msg(error):
