@@ -8,12 +8,14 @@ from utils import utils
 
 JOB_TABLE_NAME = os.environ["JOB_TABLE_NAME"]
 WS_URL = os.environ["WS_URL"]
+OBJ_BUCKET_NAME = os.environ["OBJECT_BUCKET_NAME"]
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 job_table = boto3.resource('dynamodb').Table(JOB_TABLE_NAME)
 websocket_client = boto3.client('apigatewaymanagementapi', endpoint_url=WS_URL)
+s3_client = boto3.client('s3')
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -23,10 +25,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   """
 
   try:
-    error, job_id = extract_data(event, context)
+    error, job_id, object_url = extract_data(event, context)
 
     update_status(job_id, error)
-    notify_clients(job_id, error)
+    notify_clients(job_id, object_url, error)
     # TODO: if success, create presigned url of done video
   except Exception as e:
     raise utils.InternalError("Failed to terminate job", e)
@@ -55,7 +57,7 @@ def update_status(job_id, error):
   )
 
 
-def notify_clients(job_id, error):
+def notify_clients(job_id, object_url, error):
   item_res = job_table.get_item(
     Key={
       'PK': f"JOB#{job_id}",
@@ -65,7 +67,7 @@ def notify_clients(job_id, error):
   item = item_res.get('Item', None)
   connections = item['ws_connections']
   logger.info("get msg")
-  msg = "Job succeeded." if error is None else get_error_msg(error)
+  msg = get_success_msg(object_url) if error is None else get_error_msg(error)
   logger.info(f"msg: {msg}")
   for connection_id in connections:
     try:
@@ -75,6 +77,16 @@ def notify_clients(job_id, error):
       )
     except Exception:
       pass
+
+
+def get_success_msg(object_url):
+  video_url = s3_client.generate_presigned_url('get_object',
+                                               Params={
+                                                 'Bucket': OBJ_BUCKET_NAME,
+                                                 'Key': object_url,
+                                               },
+                                               ExpiresIn=3600)
+  return f"Job succeeded.\nProcessed file: {video_url}"
 
 
 def get_error_msg(error):
@@ -89,4 +101,4 @@ def get_error_msg(error):
 
 
 def extract_data(event, context):
-  return event.get('error'), event['jobId']
+  return event.get('error'), event['jobId'], event['objectUrl']

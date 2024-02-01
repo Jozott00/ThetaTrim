@@ -41,14 +41,12 @@ def upload_to_s3(upload_url, video_path):
   print("Uploading video…")
   try:
     with open(video_path, 'rb') as file:
-      response = requests.put(upload_url + 123, data=file)
+      response = requests.put(upload_url, data=file)
       response.raise_for_status()
-      if response.status_code == 200:
-        print("Upload successful.")
-      else:
-        print(f"Failed to upload. Status code: {response.status_code}")
+      if response.status_code != 200:
+        print(f"Failed to upload file: {video_path}")
   except:
-    raise Exception("Upload failed.")
+    raise Exception(f"Failed to upload file: {video_path}")
 
 
 def listen_for_result(job_id):

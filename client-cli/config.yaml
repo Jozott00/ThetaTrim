@@ -1,3 +1,8 @@
 operations:
-  - operation: resize
+  - operation: crop
     opts: 500 500
+  - operation: format
+    opts: mov
+  - operation: resize
+    opts: 400 400
+  - operation: exaudio

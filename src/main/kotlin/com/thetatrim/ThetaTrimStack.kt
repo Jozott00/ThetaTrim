@@ -366,7 +366,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .lambdaFunction(extractAudioLambda)
             .outputPath("$.Payload")
             .build()
-            
+
         val extractAudioChoice = Choice.Builder.create(this, "ExtractAudioChoice")
             .build()
             .`when`(Condition.booleanEquals("$.extractAudio", true), extractAudioTask)
@@ -426,6 +426,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         jobsBucket.grantReadWrite(processChunkLambda)
         jobsBucket.grantReadWrite(reduceChunksLambda)
         jobsBucket.grantReadWrite(cleanupLambda)
+        jobsBucket.grantReadWrite(terminateLambda)
         jobsTable.grantWriteData(postJobLambda)
         jobsTable.grantReadWriteData(jobProbeLambda)
         jobsTable.grantReadWriteData(preprocessLambda)
