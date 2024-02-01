@@ -23,13 +23,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   Terminates in the workflow.
   Updates the status of the database entry and notifies websocket clients of the status (success or error).
   """
-
   try:
-    error, job_id, object_url = extract_data(event, context)
+    error, job_id, video_key, audio_key = extract_data(event, context)
 
     update_status(job_id, error)
-    notify_clients(job_id, object_url, error)
-    # TODO: if success, create presigned url of done video
+    notify_clients(job_id, video_key, audio_key, error)
   except Exception as e:
     raise utils.InternalError("Failed to terminate job", e)
 
@@ -57,7 +55,7 @@ def update_status(job_id, error):
   )
 
 
-def notify_clients(job_id, object_url, error):
+def notify_clients(job_id, video_key, audio_key, error):
   item_res = job_table.get_item(
     Key={
       'PK': f"JOB#{job_id}",
@@ -66,7 +64,10 @@ def notify_clients(job_id, object_url, error):
   )
   item = item_res.get('Item', None)
   connections = item['ws_connections']
-  msg = get_success_msg(object_url, item['transformations']) if error is None else get_error_msg(error)
+  if error is None:
+    msg = get_success_msg(video_key, audio_key, item['transformations'])
+  else:
+    msg = get_error_msg(error)
   for connection_id in connections:
     try:
       websocket_client.post_to_connection(
@@ -77,23 +78,23 @@ def notify_clients(job_id, object_url, error):
       pass
 
 
-def get_success_msg(object_url, transformations):
+def get_success_msg(video_key, audio_key, transformations):
   video_url = s3_client.generate_presigned_url('get_object',
                                                Params={
                                                  'Bucket': OBJ_BUCKET_NAME,
-                                                 'Key': object_url,
+                                                 'Key': video_key,
                                                },
                                                ExpiresIn=3600)
-  msg = f"Job succeeded.\nProcessed file: {video_url}"
-  '''has_exported_audio = any(item.get('operation') == 'exaudio' for item in transformations)
+  msg = f"Job succeeded.\nVideo file: {video_url}"
+  has_exported_audio = any(item.get('operation') == 'exaudio' for item in transformations)
   if (has_exported_audio):
     audio_url = s3_client.generate_presigned_url('get_object',
                                                  Params={
                                                    'Bucket': OBJ_BUCKET_NAME,
-                                                   'Key': object_url,
+                                                   'Key': audio_key,
                                                  },
                                                  ExpiresIn=3600)
-    msg += f"\nAudio file: {audio_url}"'''
+    msg += f"\nAudio file: {audio_url}"
   return msg
 
 
@@ -109,4 +110,14 @@ def get_error_msg(error):
 
 
 def extract_data(event, context):
-  return event.get('error'), event['jobId'], event['objectUrl']
+  try:
+    job_id = event['jobId']
+    error = event['error']
+    video_key = None
+    audio_key = None
+  except:
+    job_id = event[2][0]['jobId']
+    error = None
+    video_key = event[2][0]['key']
+    audio_key = event[1]['key']
+  return error, job_id, video_key, audio_key

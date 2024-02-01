@@ -207,15 +207,15 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             )
             .build()
 
-        CfnOutput.Builder.create(this, "WebSocketApiEndpoint")
-            .description("The URL of the WebSocket API")
-            .value(websocketApi.apiEndpoint)
-            .build()
-
         val webSocketStage = WebSocketStage.Builder.create(this, "WebSocketApiDevStage")
             .webSocketApi(websocketApi)
             .stageName("prod")
             .autoDeploy(true)
+            .build()
+
+        CfnOutput.Builder.create(this, "WebSocketApiEndpoint")
+            .description("The URL of the WebSocket API")
+            .value("${websocketApi.apiEndpoint}/${webSocketStage.stageName}/")
             .build()
 
         environmentMap.put("WS_URL", webSocketStage.callbackUrl)
