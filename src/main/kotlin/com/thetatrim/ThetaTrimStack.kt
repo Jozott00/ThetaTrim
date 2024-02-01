@@ -3,8 +3,12 @@ package com.thetatrim
 import software.amazon.awscdk.Duration
 import software.amazon.awscdk.Stack
 import software.amazon.awscdk.StackProps
+import software.amazon.awscdk.aws_apigatewayv2_integrations.WebSocketLambdaIntegration
 import software.amazon.awscdk.services.apigateway.LambdaIntegration
 import software.amazon.awscdk.services.apigateway.RestApi
+import software.amazon.awscdk.services.apigatewayv2.WebSocketApi
+import software.amazon.awscdk.services.apigatewayv2.WebSocketRouteOptions
+import software.amazon.awscdk.services.apigatewayv2.WebSocketStage
 import software.amazon.awscdk.services.dynamodb.Attribute
 import software.amazon.awscdk.services.dynamodb.AttributeType
 import software.amazon.awscdk.services.dynamodb.Table
@@ -92,14 +96,20 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
     private lateinit var generateThumbnailLambda: Function
 
     /**
-     * Lambda function for handling errors.
+     * Lambda function for terminating the processing flow.
      */
-    private lateinit var handleErrorLambda: Function
+    private lateinit var terminateLambda: Function
 
     /**
      * Lambda function to cleanup all resources after the job is done.
      */
     private lateinit var cleanupLambda: Function
+
+    /** Lambda function to handle a websocket connection. */
+    private lateinit var connectWsLambda: Function
+
+    /** Lambda function to handle a websocket disconnect. */
+    private lateinit var disconnectWsLambda: Function
 
     /**
      * Sate-machine for the reducer workflow.
@@ -110,6 +120,9 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
      * Rest API for handling different endpoints.
      */
     private lateinit var restApi: RestApi
+
+    /** Websocket API for pushed-based notifications. */
+    private lateinit var websocketApi: WebSocketApi
     private lateinit var jobsTable: Table
 
     /**
@@ -164,6 +177,36 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .license("http://www.ffmpeg.org/legal.html")
             .build()
 
+        connectWsLambda = lambdaBuilderFactory("lambdas/ws/connect_ws")
+            .timeout(Duration.seconds(10))
+            .build()
+
+        disconnectWsLambda = lambdaBuilderFactory("lambdas/ws/disconnect_ws")
+            .timeout(Duration.seconds(10))
+            .build()
+
+        websocketApi = WebSocketApi.Builder.create(this, "WebSocketApi")
+            .apiName("${PREFIX}websocket-api")
+            .connectRouteOptions(
+                WebSocketRouteOptions.Builder().integration(
+                    WebSocketLambdaIntegration("ConnectIntegration", connectWsLambda)
+                ).build()
+            )
+            .disconnectRouteOptions(
+                WebSocketRouteOptions.Builder().integration(
+                    WebSocketLambdaIntegration("DisconnectIntegration", disconnectWsLambda)
+                ).build()
+            )
+            .build()
+
+        val webSocketStage = WebSocketStage.Builder.create(this, "WebSocketApiDevStage")
+            .webSocketApi(websocketApi)
+            .stageName("prod")
+            .autoDeploy(true)
+            .build()
+
+        environmentMap.put("WS_URL", webSocketStage.callbackUrl)
+
         postJobLambda = lambdaBuilderFactory("lambdas/rest/post_job")
             .timeout(Duration.seconds(60))
             .build()
@@ -205,7 +248,7 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
 //            .ephemeralStorageSize(Size.gibibytes(1))
             .build()
 
-        handleErrorLambda = lambdaBuilderFactory("lambdas/video_processing/handle_error")
+        terminateLambda = lambdaBuilderFactory("lambdas/video_processing/terminate")
             .timeout(Duration.seconds(60))
             .build()
 
@@ -230,24 +273,27 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
      * WIP: Generates the reducer step-functions state machine.
      */
     private fun generateVideoProcessingSateMachine(): StateMachine {
+        val pass = Pass.Builder.create(this, "Pass").build()
         val cleanupTask = LambdaInvoke.Builder.create(this, "CleanupTask")
             .lambdaFunction(cleanupLambda)
             .outputPath("$.Payload")
             .build()
-        // TODO: consider notifying with step-functions construct (https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_stepfunctions_tasks.SnsPublish.html)
-        val notifySuccess = Pass.Builder.create(this, "NotifySuccess").build()
-        val notifyProcessingError = Pass.Builder.create(this, "NotifyProcessingError").build().next(cleanupTask)
-        val notifyReduceError = Pass.Builder.create(this, "NotifyReduceError").build()
-        val handleProcessingErrorTask = LambdaInvoke.Builder.create(this, "HandleProcessingError")
-            .lambdaFunction(handleErrorLambda)
+        val notifySuccess = LambdaInvoke.Builder.create(this, "HandleSuccessTask")
+            .lambdaFunction(terminateLambda)
             .outputPath("$.Payload")
             .build()
-            .next(notifyProcessingError)
-        val handleReduceErrorTask = LambdaInvoke.Builder.create(this, "HandleReduceError")
-            .lambdaFunction(handleErrorLambda)
+            .addCatch(pass, CatchProps.builder().resultPath("$.error").build())
+        val handleProcessingErrorTask = LambdaInvoke.Builder.create(this, "HandleProcessingErrorTask")
+            .lambdaFunction(terminateLambda)
             .outputPath("$.Payload")
             .build()
-            .next(notifyReduceError)
+            .addCatch(cleanupTask, CatchProps.builder().resultPath("$.error").build())
+            .next(cleanupTask)
+        val handleReduceErrorTask = LambdaInvoke.Builder.create(this, "HandleReduceErrorTask")
+            .lambdaFunction(terminateLambda)
+            .outputPath("$.Payload")
+            .build()
+            .addCatch(pass, CatchProps.builder().resultPath("$.error").build())
         val thumbnailGenerationTask = LambdaInvoke.Builder.create(this, "ThumbnailGenerationTask")
             .lambdaFunction(generateThumbnailLambda)
             .outputPath("$.Payload")
@@ -261,13 +307,13 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
             .lambdaFunction(reduceChunksLambda)
             .outputPath("$.Payload")
             .build()
-            .addCatch(handleReduceErrorTask)
+            .addCatch(handleReduceErrorTask, CatchProps.builder().resultPath("$.error").build())
             .next(notifySuccess)
         val postProcessingParallel = Parallel.Builder.create(this, "PostProcessingParallel")
             .build()
             .branch(reduceChunksTask)
             .branch(extractLabelsTask)
-            .addCatch(cleanupTask)
+            .addCatch(cleanupTask, CatchProps.builder().resultPath("$.error").build())
             .next(cleanupTask)
         val processChunkTask = LambdaInvoke.Builder.create(this, "ProcessChunkTask")
             .lambdaFunction(processChunkLambda)
@@ -276,16 +322,16 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         val chunkMap = Map.Builder.create(this, "ChunkMap")
             .itemsPath("$.chunks")
             .resultPath("$.mapOutput")
-            .maxConcurrency(10)
+            .maxConcurrency(150)
             .build()
             .iterator(processChunkTask)
-            .addCatch(handleProcessingErrorTask)
+            .addCatch(handleProcessingErrorTask, CatchProps.builder().resultPath("$.error").build())
             .next(postProcessingParallel)
         val preprocessingTask = LambdaInvoke.Builder.create(this, "PreprocessingTask")
             .lambdaFunction(preprocessLambda)
             .outputPath("$.Payload")
             .build()
-            .addCatch(handleProcessingErrorTask)
+            .addCatch(handleProcessingErrorTask, CatchProps.builder().resultPath("$.error").build())
             .next(chunkMap)
         val extractMetadataTask = LambdaInvoke.Builder.create(this, "ExtractMetadataTask")
             .lambdaFunction(extractMetadataLambda)
@@ -347,7 +393,10 @@ class ThetaTrimStack @JvmOverloads constructor(val scope: Construct?, id: String
         jobsTable.grantReadWriteData(processChunkLambda)
         jobsTable.grantReadWriteData(reduceChunksLambda)
         jobsTable.grantReadWriteData(cleanupLambda)
-        jobsTable.grantReadWriteData(handleErrorLambda)
+        jobsTable.grantReadWriteData(terminateLambda)
+        jobsTable.grantReadWriteData(connectWsLambda)
+        jobsTable.grantReadWriteData(disconnectWsLambda)
+        websocketApi.grantManageConnections(terminateLambda)
     }
 
     /**

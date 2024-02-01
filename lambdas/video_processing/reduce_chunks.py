@@ -64,7 +64,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
   return {
     "objectUrl": result_file,
-    "jobid": jobid,
+    "jobId": jobid,
     "ext": ext,
   }
 

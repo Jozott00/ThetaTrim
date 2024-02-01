@@ -6,6 +6,10 @@ def get_extension_from_key(key: str):
   return key.rsplit(".")[1]
 
 
+class InternalError(Exception):
+  pass
+
+
 class ApplicationError(Exception):
   pass
 
