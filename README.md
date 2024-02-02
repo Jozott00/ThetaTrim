@@ -1,7 +1,7 @@
 # ThetaTrim
 
 
-A highly parallized serverless video processing platform. It utilizes FFMPEG for video processing. Resizing a 4K h264 video with a length of 44 minutes and a size of 1.9 GB tooks around **49** seconds.
+A highly parallized AWS serverless video processing platform. It utilizes FFMPEG for video processing. Resizing a 4K h264 video with a length of 44 minutes and a size of 1.9 GB tooks around **49** seconds.
 
 The infrastructure design utilizes video splitting at keyframes, which makes the chunk creation very efficient. Each chunk is processed in parallel. After chunk processing is done, all chunks are reduced to a single video. 
 
