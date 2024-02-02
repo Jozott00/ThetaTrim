@@ -78,9 +78,8 @@ def process_ref_image(local_video_path, result_key):
   command = ['ffmpeg', '-i', local_video_path, '-vframes', '1', ref_image_outpath]
 
   try:
-    subprocess.run(command, capture_output=True, text=True, check=True)
+    subprocess.run(command, check=True)
   except subprocess.CalledProcessError as e:
-    logger.error(e.output)
     raise utils.FFmpegError("Failed to create reference image", e)
 
   logger.info(f"Upload refimage to {result_key}...")
@@ -90,9 +89,8 @@ def process_ref_image(local_video_path, result_key):
 
 def process_chunk(ffmpeg_command):
   try:
-    subprocess.run(ffmpeg_command, capture_output=True, text=True, check=True)
+    subprocess.run(ffmpeg_command, check=True)
   except subprocess.CalledProcessError as e:
-    logger.error(e.output)
     raise utils.FFmpegError("Failed to run ffmpeg process", e)
 
 
